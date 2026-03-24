@@ -1,0 +1,137 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ClassQuiz — Production Docker Compose
+# Services: web-api · ai-service · mongo · mongo-express (dev only)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── MongoDB ─────────────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7.0
+    container_name: classquiz-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: classquiz
+    volumes:
+      - mongo_data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - classquiz-internal
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── AI Service (Python / FastAPI) ────────────────────────────────────────────
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+      target: production
+    container_name: classquiz-ai-service
+    restart: unless-stopped
+    env_file:
+      - ./ai-service/.env
+    environment:
+      - PORT=8000
+      - ENV=production
+    networks:
+      - classquiz-internal
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      mongo:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Web API (Node.js / Express) ───────────────────────────────────────────────
+  web-api:
+    build:
+      context: ./web-api
+      dockerfile: Dockerfile
+      target: production
+    container_name: classquiz-web-api
+    restart: unless-stopped
+    env_file:
+      - ./web-api/.env
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MONGODB_URI=mongodb://mongo:27017/classquiz
+      - AI_SERVICE_URL=http://ai-service:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
+    networks:
+      - classquiz-internal
+    depends_on:
+      mongo:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ── Mongo Express (Dev / Debug only — remove in production) ──────────────────
+  mongo-express:
+    image: mongo-express:1.0.2
+    container_name: classquiz-mongo-express
+    restart: unless-stopped
+    profiles:
+      - dev   # Only starts with: docker compose --profile dev up
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongo
+      ME_CONFIG_MONGODB_PORT: 27017
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: classquiz_dev_2024
+    ports:
+      - "8081:8081"
+    networks:
+      - classquiz-internal
+    depends_on:
+      - mongo
+
+
+# ─── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  classquiz-internal:
+    driver: bridge
+    internal: false  # Allow external access for web-api port 3000
+
+
+# ─── Volumes ───────────────────────────────────────────────────────────────────
+volumes:
+  mongo_data:
+    driver: local
+  uploads_data:
+    driver: local
+  logs_data:
+    driver: local
