@@ -2,8 +2,6 @@ const Student = require('../models/Student');
 const StudentExam = require('../models/StudentExam');
 const { CLASS_LEVELS } = require('../utils/constants');
 const { success, created, notFound, badRequest, conflict } = require('../utils/response');
-const { Readable } = require('stream');
-const csv = require('csv-parser');
 
 /**
  * POST /api/students
@@ -92,7 +90,6 @@ const updateStudent = async (req, res) => {
     return badRequest(res, `Invalid class level. Must be one of: ${CLASS_LEVELS.join(', ')}`);
   }
 
-  // Check code uniqueness if being changed
   if (code) {
     const existing = await Student.findOne({
       code: code.toUpperCase(),
@@ -113,7 +110,6 @@ const updateStudent = async (req, res) => {
 
 /**
  * DELETE /api/students/:id
- * Soft delete (deactivate)
  */
 const deleteStudent = async (req, res) => {
   const student = await Student.findByIdAndUpdate(
@@ -156,6 +152,28 @@ const getStudentPerformance = async (req, res) => {
 };
 
 /**
+ * Simple CSV parser — zero external dependencies.
+ * Handles quoted fields and trims whitespace.
+ */
+function parseCSVString(csvText) {
+  const lines = csvText.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) return { headers: [], rows: [] };
+
+  const headers = lines[0].split(',').map((h) => h.trim());
+  const rows = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(',').map((v) => v.trim());
+    const row = {};
+    headers.forEach((h, idx) => {
+      row[h] = values[idx] || '';
+    });
+    rows.push(row);
+  }
+  return { headers, rows };
+}
+
+/**
  * POST /api/students/import-csv
  * Parse uploaded CSV and bulk-create students.
  * CSV columns: name, studentCode, classLevel
@@ -164,42 +182,26 @@ const importCSV = async (req, res) => {
   const file = req.file;
   if (!file) return badRequest(res, 'CSV file is required');
 
-  const results = [];
-  const errors = [];
-
-  // Parse the CSV from the buffer
-  const parseCSV = () =>
-    new Promise((resolve, reject) => {
-      const rows = [];
-      const stream = Readable.from(file.buffer);
-      stream
-        .pipe(csv({ mapHeaders: ({ header }) => header.trim() }))
-        .on('data', (row) => rows.push(row))
-        .on('end', () => resolve(rows))
-        .on('error', (err) => reject(err));
-    });
-
-  let rows;
-  try {
-    rows = await parseCSV();
-  } catch (err) {
-    return badRequest(res, `Failed to parse CSV: ${err.message}`);
-  }
+  // Parse CSV from buffer
+  const csvText = file.buffer.toString('utf-8');
+  const { headers, rows } = parseCSVString(csvText);
 
   if (!rows.length) {
-    return badRequest(res, 'CSV file is empty');
+    return badRequest(res, 'CSV file is empty or has no data rows');
   }
 
-  // Validate header presence
-  const firstRow = rows[0];
+  // Validate headers
   const requiredCols = ['name', 'studentCode', 'classLevel'];
-  const missingCols = requiredCols.filter((col) => !(col in firstRow));
+  const missingCols = requiredCols.filter((col) => !headers.includes(col));
   if (missingCols.length > 0) {
     return badRequest(
       res,
       `CSV missing required columns: ${missingCols.join(', ')}. Expected: name, studentCode, classLevel`
     );
   }
+
+  const results = [];
+  const errors = [];
 
   // Collect existing codes for duplicate check
   const allCodes = rows.map((r) => (r.studentCode || '').trim().toUpperCase()).filter(Boolean);
@@ -211,24 +213,21 @@ const importCSV = async (req, res) => {
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    const rowNum = i + 2; // +2 because row 1 is header, data starts at row 2
+    const rowNum = i + 2;
     const name = (row.name || '').trim();
     const code = (row.studentCode || '').trim().toUpperCase();
     const classLevel = (row.classLevel || '').trim();
 
-    // Validate name
     if (!name || name.length < 2) {
       errors.push({ row: rowNum, field: 'name', value: name, reason: 'Name is required (min 2 chars)' });
       continue;
     }
 
-    // Validate code format
     if (!code || !/^[A-Z0-9\-_]{3,20}$/.test(code)) {
       errors.push({ row: rowNum, field: 'studentCode', value: code, reason: 'Code must be 3-20 alphanumeric characters' });
       continue;
     }
 
-    // Validate classLevel
     if (!CLASS_LEVELS.includes(classLevel)) {
       errors.push({
         row: rowNum,
@@ -239,13 +238,11 @@ const importCSV = async (req, res) => {
       continue;
     }
 
-    // Check for duplicate code in DB
     if (existingCodes.has(code)) {
       errors.push({ row: rowNum, field: 'studentCode', value: code, reason: 'Student code already exists in database' });
       continue;
     }
 
-    // Check for duplicate code within this CSV
     if (seenCodes.has(code)) {
       errors.push({ row: rowNum, field: 'studentCode', value: code, reason: 'Duplicate code within CSV file' });
       continue;
@@ -262,11 +259,9 @@ const importCSV = async (req, res) => {
       const inserted = await Student.insertMany(results, { ordered: false });
       insertedCount = inserted.length;
     } catch (err) {
-      // Handle partial failures from insertMany
       if (err.insertedDocs) {
         insertedCount = err.insertedDocs.length;
       }
-      // Add write errors to the errors array
       if (err.writeErrors) {
         for (const we of err.writeErrors) {
           errors.push({
@@ -286,7 +281,7 @@ const importCSV = async (req, res) => {
       successCount: insertedCount,
       failedCount: errors.length,
     },
-    errors: errors.slice(0, 50), // Cap error details to first 50
+    errors: errors.slice(0, 50),
   }, `CSV import complete: ${insertedCount} created, ${errors.length} failed`);
 };
 

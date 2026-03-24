@@ -3,7 +3,7 @@ import api from '@/lib/api'
 import type {
   Student, Exam, StudentExam, Validation, BatchUpload,
   CreateStudentDto, LoginCredentials, AuthResponse, DashboardStats,
-  CSVImportResult,
+  CSVImportResult, Question,
 } from '@/types'
 import type { ClassLevel } from '@/constants/domain'
 
@@ -141,7 +141,7 @@ export const useExams = (params?: { classLevel?: ClassLevel; status?: string; pa
     },
   })
 
-export const useExam = (id: string) =>
+export const useExam = (id: string, polling?: boolean) =>
   useQuery({
     queryKey: QK.exam(id),
     queryFn: async () => {
@@ -149,6 +149,7 @@ export const useExam = (id: string) =>
       return data.data as Exam
     },
     enabled: !!id,
+    refetchInterval: polling ? 2000 : false, // Poll every 2s when OCR is processing
   })
 
 export const useCreateExam = () => {
@@ -169,6 +170,31 @@ export const useReprocessExam = () => {
   return useMutation({
     mutationFn: async (id: string) => { await api.post(`/exams/${id}/reprocess`) },
     onSuccess: (_d, id) => qc.invalidateQueries({ queryKey: QK.exam(id) }),
+  })
+}
+
+export const useTriggerOCR = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await api.post(`/exams/${id}/ocr`)
+      return data.data
+    },
+    onSuccess: (_d, id) => qc.invalidateQueries({ queryKey: QK.exam(id) }),
+  })
+}
+
+export const useUpdateQuestions = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, questions }: { id: string; questions: Question[] }) => {
+      const { data } = await api.put(`/exams/${id}/questions`, { questions })
+      return data.data as Exam
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: QK.exam(vars.id) })
+      qc.invalidateQueries({ queryKey: ['exams'] })
+    },
   })
 }
 

@@ -12,6 +12,8 @@ const questionSchema = new mongoose.Schema(
       enum: ['multiple_choice', 'short_answer', 'long_answer', 'true_false', 'fill_blank'],
       default: 'short_answer',
     },
+    confidence: { type: Number, min: 0, max: 100, default: null },
+    needsValidation: { type: Boolean, default: false },
   },
   { _id: false }
 );
@@ -69,6 +71,9 @@ const examSchema = new mongoose.Schema(
       enum: ['draft', 'processing', 'active', 'archived'],
       default: 'draft',
     },
+    // OCR metadata
+    ocrConfidence: { type: Number, min: 0, max: 100, default: null },
+    ocrNotes: { type: String, default: null },
     ocrProcessedAt: Date,
     createdBy: { type: String, default: 'admin' },
   },

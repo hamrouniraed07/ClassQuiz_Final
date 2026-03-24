@@ -28,11 +28,15 @@ export type QuestionType = 'multiple_choice' | 'short_answer' | 'long_answer' | 
 export interface Question {
   number: number; text: string; correctAnswer: string
   maxScore: number; type: QuestionType
+  confidence?: number | null
+  needsValidation?: boolean
 }
 export interface Exam {
   _id: string; title: string; subject: Subject; classLevel: ClassLevel
   totalScore: number; questions?: Question[]
   status: ExamStatus; ocrProcessedAt?: string
+  ocrConfidence?: number | null
+  ocrNotes?: string | null
   correctedExamImages: { path: string; originalName: string }[]
   blankExamImages: { path: string; originalName: string }[]
   createdAt: string
@@ -83,12 +87,10 @@ export interface Validation {
 
 // ── Batch ─────────────────────────────────────────────────────────────────────
 export interface BatchUpload {
-  _id: string
-  exam: string
+  _id: string; exam: string
   items: { studentId: string; imagePath: string; status: string; error?: string }[]
   totalCount: number; successCount: number; failedCount: number; pendingCount: number
-  status: string
-  createdAt: string
+  status: string; createdAt: string
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────

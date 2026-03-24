@@ -12,7 +12,7 @@ const {
   importCSV,
 } = require('../controllers/studentController');
 
-// CSV upload: store in memory buffer (not disk)
+// CSV upload: store in memory buffer (not disk) — multer is already a project dependency
 const csvUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max for CSV
@@ -32,6 +32,7 @@ router.route('/')
   .get(getStudents)
   .post(createStudent);
 
+// IMPORTANT: /import-csv MUST be before /:id so Express doesn't match "import-csv" as an :id
 router.post('/import-csv', csvUpload.single('file'), importCSV);
 
 router.route('/:id')
