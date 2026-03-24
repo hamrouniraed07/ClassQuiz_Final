@@ -1,7 +1,7 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Plus, FileText, RefreshCw, CheckCircle2, Clock, Archive } from 'lucide-react'
+import { Plus, FileText, RefreshCw, Search } from 'lucide-react'
 import { useExams, useReprocessExam } from '@/hooks/useApi'
 import { StatusBadge, LoadingPage, EmptyState, PageHeader } from '@/components/shared'
 import { CLASS_LEVEL_LABELS, SUBJECT_META } from '@/constants/domain'
@@ -46,11 +46,37 @@ function ExamCard({ exam, index }: { exam: Exam; index: number }) {
 
 export default function ExamsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [statusFilter, setStatusFilter] = useState<string | undefined>()
+
+  // Read search from URL query param (set by Topbar or local input)
+  const [search, setSearch] = useState(searchParams.get('search') || '')
+
+  // Sync URL param to local state
+  useEffect(() => {
+    const urlSearch = searchParams.get('search') || ''
+    if (urlSearch !== search) setSearch(urlSearch)
+  }, [searchParams])
+
   const { data, isLoading } = useExams({ status: statusFilter })
 
   if (isLoading) return <LoadingPage />
-  const exams = data?.exams ?? []
+
+  const allExams = data?.exams ?? []
+
+  // Client-side filter by title
+  const exams = search.trim()
+    ? allExams.filter(e => e.title.toLowerCase().includes(search.toLowerCase()))
+    : allExams
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value)
+    if (value.trim()) {
+      setSearchParams({ search: value })
+    } else {
+      setSearchParams({})
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -62,18 +88,31 @@ export default function ExamsPage() {
         }
       />
 
-      <div className="flex gap-2">
-        {[undefined, 'active', 'processing', 'draft', 'archived'].map(s => (
-          <button key={String(s)} onClick={() => setStatusFilter(s)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all ${statusFilter === s ? 'bg-amber-500 text-white' : 'btn-ghost'}`}>
-            {s ?? 'All'}
-          </button>
-        ))}
+      {/* Search + Status filters */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+          <input
+            value={search}
+            onChange={e => handleSearchChange(e.target.value)}
+            placeholder="Search exams by title…"
+            className="w-full bg-slate-800/60 border border-white/[0.08] rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:border-teal-500/50 focus:outline-none"
+          />
+        </div>
+        <div className="flex gap-2">
+          {[undefined, 'active', 'processing', 'draft', 'archived'].map(s => (
+            <button key={String(s)} onClick={() => setStatusFilter(s)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all ${statusFilter === s ? 'bg-amber-500 text-white' : 'btn-ghost'}`}>
+              {s ?? 'All'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {exams.length === 0
-        ? <EmptyState icon={FileText} title="No exams found" description="Create your first exam to get started."
-            action={<button onClick={() => navigate('/exams/create')} className="btn-primary">Create Exam</button>} />
+        ? <EmptyState icon={FileText} title="No exams found"
+            description={search ? `No exams matching "${search}"` : "Create your first exam to get started."}
+            action={!search ? <button onClick={() => navigate('/exams/create')} className="btn-primary">Create Exam</button> : undefined} />
         : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {exams.map((exam, i) => <ExamCard key={exam._id} exam={exam} index={i} />)}
           </div>

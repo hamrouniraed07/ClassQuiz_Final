@@ -1,5 +1,6 @@
-import { useLocation } from 'react-router-dom'
-import { Bell, Search } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { Bell, Search, X } from 'lucide-react'
 import { useValidationStats } from '@/hooks/useApi'
 import { motion } from 'framer-motion'
 
@@ -14,9 +15,32 @@ const routeLabels: Record<string, { title: string; subtitle: string }> = {
 
 export default function Topbar() {
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const basePath = '/' + pathname.split('/')[1]
   const meta = routeLabels[basePath] ?? { title: 'ClassQuiz', subtitle: '' }
   const { data: stats } = useValidationStats()
+
+  const [searchValue, setSearchValue] = useState('')
+
+  const handleSearch = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter' || !searchValue.trim()) return
+
+    const query = searchValue.trim()
+
+    // Navigate to the appropriate page with search query
+    if (basePath === '/exams' || basePath === '/exams/create') {
+      navigate(`/exams?search=${encodeURIComponent(query)}`)
+    } else if (basePath === '/students') {
+      navigate(`/students?search=${encodeURIComponent(query)}`)
+    } else {
+      // Default: search students
+      navigate(`/students?search=${encodeURIComponent(query)}`)
+    }
+  }, [searchValue, basePath, navigate])
+
+  const clearSearch = () => {
+    setSearchValue('')
+  }
 
   return (
     <header className="flex items-center gap-4 px-6 py-4 border-b border-white/[0.05] bg-navy-900/80 backdrop-blur-sm">
@@ -36,9 +60,17 @@ export default function Topbar() {
       <div className="relative hidden md:flex items-center">
         <Search className="absolute left-3 w-3.5 h-3.5 text-slate-500" />
         <input
-          placeholder="Quick search…"
-          className="input-dark pl-9 w-52 text-xs py-2"
+          value={searchValue}
+          onChange={e => setSearchValue(e.target.value)}
+          onKeyDown={handleSearch}
+          placeholder="Quick search… (Enter)"
+          className="input-dark pl-9 pr-8 w-56 text-xs py-2"
         />
+        {searchValue && (
+          <button onClick={clearSearch} className="absolute right-2 p-0.5 rounded hover:bg-white/[0.07] text-slate-500 hover:text-white transition-colors">
+            <X className="w-3 h-3" />
+          </button>
+        )}
       </div>
 
       {/* Notifications */}
