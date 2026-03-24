@@ -3,10 +3,18 @@ const logger = require('./logger');
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://ai-service:8000';
 const TIMEOUT_MS = parseInt(process.env.AI_SERVICE_TIMEOUT) || 120000;
 
-/**
- * Generic fetch wrapper for AI Service calls with timeout and error handling
- */
+// Use node-fetch (v3, ESM-compatible) which natively supports form-data streams.
+// Node 20's native fetch does NOT work with the form-data npm package.
+let nodeFetch;
+async function getFetch() {
+  if (!nodeFetch) {
+    nodeFetch = (await import('node-fetch')).default;
+  }
+  return nodeFetch;
+}
+
 async function callAIService(endpoint, options = {}) {
+  const fetch = await getFetch();
   const url = `${AI_SERVICE_URL}${endpoint}`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -50,25 +58,17 @@ async function callAIService(endpoint, options = {}) {
 }
 
 /**
- * Send multipart form data (images) to AI service.
- *
- * Node 20 native fetch does not understand the `form-data` npm package directly.
- * We use formData.getBuffer() + formData.getHeaders() to serialize it properly.
+ * Send multipart form data to AI service.
+ * Uses node-fetch which natively supports form-data streams — no buffer conversion needed.
  */
 async function sendFormData(endpoint, formData) {
-  const headers = formData.getHeaders();
-  const buffer = formData.getBuffer();
-
   return callAIService(endpoint, {
     method: 'POST',
-    headers: headers,
-    body: buffer,
+    body: formData,
+    // node-fetch automatically sets Content-Type with correct boundary from form-data
   });
 }
 
-/**
- * Send JSON body to AI service
- */
 async function sendJSON(endpoint, body) {
   return callAIService(endpoint, {
     method: 'POST',
