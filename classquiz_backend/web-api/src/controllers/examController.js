@@ -10,6 +10,8 @@ const OCR_THRESHOLD = parseInt(process.env.OCR_CONFIDENCE_THRESHOLD) || 70;
 
 /**
  * POST /api/exams
+ * Create exam record and upload images. Does NOT trigger OCR automatically.
+ * Exam is created in 'draft' status — admin must trigger OCR explicitly.
  */
 const createExam = async (req, res) => {
   const { title, subject, classLevel } = req.body;
@@ -34,7 +36,7 @@ const createExam = async (req, res) => {
     classLevel,
     totalScore: 0,
     questions: [],
-    status: 'processing',
+    status: 'draft',
     correctedExamImages: correctedFiles.map((f) => ({
       path: f.path,
       originalName: f.originalname,
@@ -45,90 +47,14 @@ const createExam = async (req, res) => {
     })),
   });
 
-  // Trigger AI OCR asynchronously
-  processExamOCR(exam._id).catch((err) => {
-    logger.error(`OCR processing failed for exam ${exam._id}:`, err);
-  });
-
-  return created(res, exam, 'Exam created. OCR processing started.');
+  return created(res, exam, 'Exam created. Use POST /exams/:id/ocr to extract questions.');
 };
 
 /**
- * Core OCR processing — stores per-question confidence + exam-level confidence
- */
-async function processExamOCR(examId) {
-  const exam = await Exam.findById(examId);
-  if (!exam) throw new Error(`Exam ${examId} not found`);
-
-  try {
-    await Exam.findByIdAndUpdate(examId, { status: 'processing' });
-
-    const form = new FormData();
-
-    for (const img of exam.correctedExamImages) {
-      form.append('corrected_images', fs.createReadStream(img.path), {
-        filename: img.originalName,
-      });
-    }
-
-    for (const img of exam.blankExamImages) {
-      form.append('blank_images', fs.createReadStream(img.path), {
-        filename: img.originalName,
-      });
-    }
-
-    const result = await sendFormData('/ocr/extract-exam', form);
-
-    // Map AI response to our question schema, enriching with confidence
-    const overallConfidence = result.confidence_score || 0;
-    const questions = (result.questions || []).map((q) => {
-      // AI service returns confidence_score at overall level.
-      // We simulate per-question confidence based on overall + text quality heuristics.
-      // If the AI service later adds per-question confidence, we use it directly.
-      const qConfidence = q.confidence_score != null
-        ? q.confidence_score
-        : overallConfidence;
-
-      return {
-        number: q.number,
-        text: q.text,
-        correctAnswer: q.correct_answer,
-        maxScore: q.max_score,
-        type: q.type || 'short_answer',
-        confidence: Math.round(qConfidence * 100) / 100,
-        needsValidation: qConfidence < OCR_THRESHOLD,
-      };
-    });
-
-    const totalScore = questions.reduce((s, q) => s + q.maxScore, 0);
-    const hasLowConfidence = questions.some((q) => q.needsValidation);
-
-    await Exam.findByIdAndUpdate(examId, {
-      questions,
-      totalScore,
-      ocrConfidence: Math.round(overallConfidence * 100) / 100,
-      ocrNotes: result.notes || null,
-      status: hasLowConfidence ? 'draft' : 'active',
-      ocrProcessedAt: new Date(),
-    });
-
-    logger.info(
-      `Exam OCR completed for ${examId}: ${questions.length} questions, confidence: ${overallConfidence.toFixed(1)}%`
-    );
-  } catch (err) {
-    await Exam.findByIdAndUpdate(examId, {
-      status: 'draft',
-      ocrNotes: `OCR failed: ${err.message}`,
-    });
-    logger.error(`Exam OCR failed for ${examId}:`, err);
-    throw err;
-  }
-}
-
-/**
  * POST /api/exams/:id/ocr
- * Manually trigger OCR processing for an exam.
- * Returns immediately with status; client polls GET /exams/:id for results.
+ * Run OCR on exam images and RETURN the extracted data.
+ * ⚠️ Does NOT save questions to the database.
+ * The frontend must call POST /exams/:id/confirm to save.
  */
 const triggerOCR = async (req, res) => {
   const exam = await Exam.findById(req.params.id);
@@ -138,62 +64,102 @@ const triggerOCR = async (req, res) => {
     return badRequest(res, 'No corrected exam images to process');
   }
 
-  // Reset state for re-processing
-  await Exam.findByIdAndUpdate(exam._id, {
-    status: 'processing',
-    questions: [],
-    totalScore: 0,
-    ocrConfidence: null,
-    ocrNotes: null,
-    ocrProcessedAt: null,
-  });
+  // Mark as processing (for polling UIs)
+  await Exam.findByIdAndUpdate(exam._id, { status: 'processing' });
 
-  // Fire OCR asynchronously
-  processExamOCR(exam._id).catch((err) =>
-    logger.error(`OCR trigger failed for exam ${exam._id}:`, err)
-  );
+  try {
+    const form = new FormData();
 
-  return success(res, { examId: exam._id, status: 'processing' }, 'OCR processing started. Poll GET /exams/:id for results.');
+    for (const img of exam.correctedExamImages) {
+      form.append('corrected_images', fs.createReadStream(img.path), {
+        filename: img.originalName,
+      });
+    }
+    for (const img of exam.blankExamImages) {
+      form.append('blank_images', fs.createReadStream(img.path), {
+        filename: img.originalName,
+      });
+    }
+
+    const result = await sendFormData('/ocr/extract-exam', form);
+
+    const overallConfidence = result.confidence_score || 0;
+
+    // Build structured response — NOT saved to DB
+    const extractedQuestions = (result.questions || []).map((q) => ({
+      number: q.number,
+      text: q.text,
+      correctAnswer: q.correct_answer,
+      maxScore: q.max_score,
+      type: q.type || 'short_answer',
+      confidence: Math.round((q.confidence_score != null ? q.confidence_score : overallConfidence) * 100) / 100,
+      needsValidation: (q.confidence_score != null ? q.confidence_score : overallConfidence) < OCR_THRESHOLD,
+    }));
+
+    // Reset exam status back to draft (OCR data is in-flight, not saved)
+    await Exam.findByIdAndUpdate(exam._id, { status: 'draft' });
+
+    logger.info(`OCR extraction for exam ${exam._id}: ${extractedQuestions.length} questions, confidence: ${overallConfidence.toFixed(1)}%`);
+
+    return success(res, {
+      examId: exam._id,
+      questions: extractedQuestions,
+      totalScore: result.total_score || extractedQuestions.reduce((s, q) => s + q.maxScore, 0),
+      overallConfidence: Math.round(overallConfidence * 100) / 100,
+      notes: result.notes || null,
+      pageCount: result.page_count || 1,
+    }, 'OCR extraction complete. Review and confirm to save.');
+  } catch (err) {
+    await Exam.findByIdAndUpdate(exam._id, { status: 'draft' });
+    logger.error(`OCR failed for exam ${exam._id}:`, err);
+    return error(res, `OCR processing failed: ${err.message}`, 500);
+  }
 };
 
 /**
- * PUT /api/exams/:id/questions
- * Admin edits/validates extracted questions (e.g. after low-confidence OCR).
- * Accepts the full questions array; marks edited questions as validated.
+ * POST /api/exams/:id/confirm
+ * Admin sends reviewed/edited questions → saved to DB → exam activated.
+ * This is the ONLY way questions get persisted.
  */
-const updateQuestions = async (req, res) => {
+const confirmExam = async (req, res) => {
   const { questions } = req.body;
-  if (!questions || !Array.isArray(questions)) {
-    return badRequest(res, 'questions array is required');
+  if (!questions || !Array.isArray(questions) || questions.length === 0) {
+    return badRequest(res, 'questions array is required and must not be empty');
   }
 
   const exam = await Exam.findById(req.params.id);
   if (!exam) return notFound(res, 'Exam not found');
 
-  // Map incoming questions — mark all as validated (confidence 100, needsValidation false)
-  const updatedQuestions = questions.map((q) => ({
-    number: q.number,
+  const savedQuestions = questions.map((q, i) => ({
+    number: q.number || i + 1,
     text: q.text,
     correctAnswer: q.correctAnswer,
-    maxScore: q.maxScore,
+    maxScore: q.maxScore || 0,
     type: q.type || 'short_answer',
-    confidence: 100, // Admin-validated = full confidence
-    needsValidation: false,
   }));
 
-  const totalScore = updatedQuestions.reduce((s, q) => s + q.maxScore, 0);
+  const totalScore = savedQuestions.reduce((s, q) => s + q.maxScore, 0);
 
   const updated = await Exam.findByIdAndUpdate(
     req.params.id,
     {
-      questions: updatedQuestions,
+      questions: savedQuestions,
       totalScore,
-      status: 'active', // All questions validated → activate
+      status: 'active',
+      ocrProcessedAt: new Date(),
     },
     { new: true, runValidators: true }
   );
 
-  return success(res, updated, 'Questions validated and exam activated');
+  logger.info(`Exam ${exam._id} confirmed: ${savedQuestions.length} questions, total ${totalScore} pts`);
+  return success(res, updated, 'Exam confirmed and activated');
+};
+
+/**
+ * POST /api/exams/:id/reprocess — alias for triggerOCR
+ */
+const reprocessExam = async (req, res) => {
+  return triggerOCR(req, res);
 };
 
 /**
@@ -265,29 +231,9 @@ const updateExam = async (req, res) => {
  * DELETE /api/exams/:id
  */
 const deleteExam = async (req, res) => {
-  const exam = await Exam.findByIdAndUpdate(
-    req.params.id,
-    { status: 'archived' },
-    { new: true }
-  );
+  const exam = await Exam.findByIdAndUpdate(req.params.id, { status: 'archived' }, { new: true });
   if (!exam) return notFound(res, 'Exam not found');
   return success(res, null, 'Exam archived');
 };
 
-/**
- * POST /api/exams/:id/reprocess — alias kept for backward compatibility
- */
-const reprocessExam = async (req, res) => {
-  return triggerOCR(req, res);
-};
-
-module.exports = {
-  createExam,
-  getExams,
-  getExam,
-  updateExam,
-  deleteExam,
-  reprocessExam,
-  triggerOCR,
-  updateQuestions,
-};
+module.exports = { createExam, getExams, getExam, updateExam, deleteExam, reprocessExam, triggerOCR, confirmExam };

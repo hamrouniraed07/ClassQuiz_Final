@@ -8,6 +8,7 @@ import LoginPage from '@/pages/auth/LoginPage'
 import DashboardPage from '@/pages/dashboard/DashboardPage'
 import StudentsPage from '@/pages/students/StudentsPage'
 import ExamsPage from '@/pages/exams/ExamsPage'
+import CreateExamPage from '@/pages/exams/CreateExamPage'
 import ExamDetailPage from '@/pages/exams/ExamDetailPage'
 import BatchUploadPage from '@/pages/batch/BatchUploadPage'
 import ValidationPage from '@/pages/validation/ValidationPage'
@@ -35,6 +36,7 @@ export default function App() {
               <Route path="/dashboard"  element={<DashboardPage />} />
               <Route path="/students"   element={<StudentsPage />} />
               <Route path="/exams"      element={<ExamsPage />} />
+              <Route path="/exams/create" element={<CreateExamPage />} />
               <Route path="/exams/:id"  element={<ExamDetailPage />} />
               <Route path="/batch"      element={<BatchUploadPage />} />
               <Route path="/validation" element={<ValidationPage />} />

@@ -10,7 +10,7 @@ const {
   deleteExam,
   reprocessExam,
   triggerOCR,
-  updateQuestions,
+  confirmExam,
 } = require('../controllers/examController');
 
 router.use(authenticate);
@@ -30,9 +30,11 @@ router.route('/:id')
   .put(updateExam)
   .delete(deleteExam);
 
-// OCR endpoints
+// OCR: extract only (does NOT save to DB)
 router.post('/:id/ocr', triggerOCR);
 router.post('/:id/reprocess', reprocessExam);
-router.put('/:id/questions', updateQuestions);
+
+// Confirm: admin-validated questions → saved to DB
+router.post('/:id/confirm', confirmExam);
 
 module.exports = router;
