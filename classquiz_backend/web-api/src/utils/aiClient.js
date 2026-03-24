@@ -21,8 +21,25 @@ async function callAIService(endpoint, options = {}) {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      const errBody = await response.json().catch(() => ({ detail: 'Unknown AI service error' }));
-      throw new Error(`AI Service error [${response.status}]: ${errBody.detail || JSON.stringify(errBody)}`);
+      let errorMessage = `AI Service error [${response.status}]`;
+      try {
+        const errBody = await response.json();
+        // FastAPI can return { detail: "string" } or { detail: { ... } }
+        if (typeof errBody.detail === 'string') {
+          errorMessage += `: ${errBody.detail}`;
+        } else if (errBody.detail) {
+          errorMessage += `: ${JSON.stringify(errBody.detail)}`;
+        } else if (errBody.message) {
+          errorMessage += `: ${errBody.message}`;
+        } else {
+          errorMessage += `: ${JSON.stringify(errBody)}`;
+        }
+      } catch {
+        // Could not parse JSON body
+        const textBody = await response.text().catch(() => 'Unknown error');
+        errorMessage += `: ${textBody}`;
+      }
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
@@ -44,7 +61,6 @@ async function sendFormData(endpoint, formData) {
   return callAIService(endpoint, {
     method: 'POST',
     body: formData,
-    // Do NOT set Content-Type header — fetch sets it with correct boundary for FormData
   });
 }
 
