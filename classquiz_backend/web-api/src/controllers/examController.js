@@ -1,5 +1,6 @@
 const Exam = require('../models/Exam');
 const { sendFormData } = require('../utils/aiClient');
+const { CLASS_LEVELS, SUBJECTS } = require('../utils/constants');
 const { success, created, notFound, badRequest, error } = require('../utils/response');
 const FormData = require('form-data');
 const fs = require('fs');
@@ -10,7 +11,14 @@ const logger = require('../utils/logger');
  * Create exam record and upload corrected + blank images → trigger OCR
  */
 const createExam = async (req, res) => {
-  const { title, subject, class: examClass } = req.body;
+  const { title, subject, classLevel } = req.body;
+
+  if (!SUBJECTS.includes(subject)) {
+    return badRequest(res, `Invalid subject. Must be one of: ${SUBJECTS.join(', ')}`);
+  }
+  if (!CLASS_LEVELS.includes(classLevel)) {
+    return badRequest(res, `Invalid class level. Must be one of: ${CLASS_LEVELS.join(', ')}`);
+  }
 
   const correctedFiles = req.files?.correctedExam || [];
   const blankFiles = req.files?.blankExam || [];
@@ -22,8 +30,8 @@ const createExam = async (req, res) => {
   const exam = await Exam.create({
     title,
     subject,
-    class: parseInt(examClass),
-    totalScore: 0, // Will be updated after OCR
+    classLevel,
+    totalScore: 0,
     questions: [],
     status: 'processing',
     correctedExamImages: correctedFiles.map((f) => ({
@@ -51,14 +59,12 @@ async function processExamOCR(exam) {
   try {
     const form = new FormData();
 
-    // Add corrected exam images
     for (const img of exam.correctedExamImages) {
       form.append('corrected_images', fs.createReadStream(img.path), {
         filename: img.originalName,
       });
     }
 
-    // Add blank exam images (optional but improves accuracy)
     for (const img of exam.blankExamImages) {
       form.append('blank_images', fs.createReadStream(img.path), {
         filename: img.originalName,
@@ -67,7 +73,6 @@ async function processExamOCR(exam) {
 
     const result = await sendFormData('/ocr/extract-exam', form);
 
-    // Update exam with extracted questions
     await Exam.findByIdAndUpdate(exam._id, {
       questions: result.questions,
       totalScore: result.total_score,
@@ -87,9 +92,9 @@ async function processExamOCR(exam) {
  * GET /api/exams
  */
 const getExams = async (req, res) => {
-  const { class: examClass, status, page = 1, limit = 20 } = req.query;
+  const { classLevel, status, page = 1, limit = 20 } = req.query;
   const filter = {};
-  if (examClass) filter.class = parseInt(examClass);
+  if (classLevel) filter.classLevel = classLevel;
   if (status) filter.status = status;
 
   const [exams, total] = await Promise.all([
@@ -97,7 +102,7 @@ const getExams = async (req, res) => {
       .sort({ createdAt: -1 })
       .skip((parseInt(page) - 1) * parseInt(limit))
       .limit(parseInt(limit))
-      .select('-questions'), // Omit full questions for list view
+      .select('-questions'),
     Exam.countDocuments(filter),
   ]);
 
@@ -118,16 +123,23 @@ const getExam = async (req, res) => {
 
 /**
  * PUT /api/exams/:id
- * Update exam metadata or manually set questions
  */
 const updateExam = async (req, res) => {
-  const { title, subject, questions, status } = req.body;
+  const { title, subject, classLevel, questions, status } = req.body;
+
+  if (subject && !SUBJECTS.includes(subject)) {
+    return badRequest(res, `Invalid subject. Must be one of: ${SUBJECTS.join(', ')}`);
+  }
+  if (classLevel && !CLASS_LEVELS.includes(classLevel)) {
+    return badRequest(res, `Invalid class level. Must be one of: ${CLASS_LEVELS.join(', ')}`);
+  }
 
   const exam = await Exam.findByIdAndUpdate(
     req.params.id,
     {
       ...(title && { title }),
       ...(subject && { subject }),
+      ...(classLevel && { classLevel }),
       ...(questions && {
         questions,
         totalScore: questions.reduce((s, q) => s + q.maxScore, 0),
@@ -156,7 +168,6 @@ const deleteExam = async (req, res) => {
 
 /**
  * POST /api/exams/:id/reprocess
- * Re-trigger OCR for an exam
  */
 const reprocessExam = async (req, res) => {
   const exam = await Exam.findById(req.params.id);

@@ -1,3 +1,5 @@
+import type { ClassLevel, Subject } from '@/constants/domain'
+
 // ── Auth ─────────────────────────────────────────────────────────────────────
 export interface LoginCredentials { username: string; password: string }
 export interface AuthResponse {
@@ -8,11 +10,17 @@ export interface AuthResponse {
 // ── Student ───────────────────────────────────────────────────────────────────
 export interface Student {
   _id: string; name: string; code: string
-  class: number; isActive: boolean
+  classLevel: ClassLevel; isActive: boolean
   createdAt: string; updatedAt: string
   examCount?: number
 }
-export interface CreateStudentDto { name: string; code: string; class: number }
+export interface CreateStudentDto { name: string; code: string; classLevel: ClassLevel }
+
+// ── CSV Import ────────────────────────────────────────────────────────────────
+export interface CSVImportResult {
+  summary: { totalRows: number; successCount: number; failedCount: number }
+  errors: { row: number | string; field: string; value: string; reason: string }[]
+}
 
 // ── Exam ──────────────────────────────────────────────────────────────────────
 export type ExamStatus = 'draft' | 'processing' | 'active' | 'archived'
@@ -22,7 +30,7 @@ export interface Question {
   maxScore: number; type: QuestionType
 }
 export interface Exam {
-  _id: string; title: string; subject: string; class: number
+  _id: string; title: string; subject: Subject; classLevel: ClassLevel
   totalScore: number; questions?: Question[]
   status: ExamStatus; ocrProcessedAt?: string
   correctedExamImages: { path: string; originalName: string }[]
@@ -74,26 +82,18 @@ export interface Validation {
 }
 
 // ── Batch ─────────────────────────────────────────────────────────────────────
-export type BatchStatus = 'created' | 'processing' | 'completed' | 'partial' | 'failed'
-export interface BatchItem {
-  studentId: Student; imagePath: string; originalName: string
-  studentExamId?: StudentExam; status: 'pending' | 'processing' | 'success' | 'failed'
-  error?: string
-}
 export interface BatchUpload {
-  _id: string; exam: Exam; items: BatchItem[]
+  _id: string
+  exam: string
+  items: { studentId: string; imagePath: string; status: string; error?: string }[]
   totalCount: number; successCount: number; failedCount: number; pendingCount: number
-  status: BatchStatus; completedAt?: string; createdAt: string
+  status: string
+  createdAt: string
 }
 
-// ── Dashboard Stats ───────────────────────────────────────────────────────────
+// ── Dashboard ─────────────────────────────────────────────────────────────────
 export interface DashboardStats {
   totalStudents: number; totalExams: number
   pendingValidations: number; evaluatedToday: number
   avgScore: number; passRate: number
 }
-
-// ── Pagination ────────────────────────────────────────────────────────────────
-export interface Pagination { total: number; page: number; limit: number; pages: number }
-export interface ApiResponse<T> { success: boolean; message: string; data: T; timestamp: string }
-export interface ListResponse<T> { items: T[]; pagination: Pagination }

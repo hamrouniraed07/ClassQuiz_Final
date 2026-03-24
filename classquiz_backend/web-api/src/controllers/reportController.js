@@ -5,14 +5,23 @@ const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
 const { success, notFound, badRequest, error } = require('../utils/response');
+const { CLASS_LEVELS } = require('../utils/constants');
 const logger = require('../utils/logger');
+
+const CLASS_LEVEL_LABELS = {
+  '1ere': '1ère année',
+  '2eme': '2ème année',
+  '3eme': '3ème année',
+  '4eme': '4ème année',
+  '5eme': '5ème année',
+  '6eme': '6ème année',
+};
 
 const REPORTS_DIR = path.join(process.env.UPLOAD_DIR || './uploads', 'reports');
 if (!fs.existsSync(REPORTS_DIR)) fs.mkdirSync(REPORTS_DIR, { recursive: true });
 
 /**
  * POST /api/reports/generate/:studentExamId
- * Generate PDF report for a student exam
  */
 const generateReport = async (req, res) => {
   const studentExam = await StudentExam.findById(req.params.studentExamId)
@@ -45,7 +54,6 @@ const generateReport = async (req, res) => {
 
 /**
  * GET /api/reports/download/:studentExamId
- * Stream PDF to client
  */
 const downloadReport = async (req, res) => {
   const studentExam = await StudentExam.findById(req.params.studentExamId)
@@ -69,7 +77,6 @@ const downloadReport = async (req, res) => {
 
 /**
  * GET /api/reports/exam/:examId
- * Summary report for all students in an exam
  */
 const getExamReport = async (req, res) => {
   const exam = await Exam.findById(req.params.examId);
@@ -79,7 +86,7 @@ const getExamReport = async (req, res) => {
     exam: req.params.examId,
     status: { $in: ['evaluated', 'report_ready'] },
   })
-    .populate('student', 'name code class')
+    .populate('student', 'name code classLevel')
     .select('totalScore maxPossibleScore percentage grade student status');
 
   if (!studentExams.length) {
@@ -94,7 +101,7 @@ const getExamReport = async (req, res) => {
   }, {});
 
   return success(res, {
-    exam: { _id: exam._id, title: exam.title, subject: exam.subject, class: exam.class },
+    exam: { _id: exam._id, title: exam.title, subject: exam.subject, classLevel: exam.classLevel },
     summary: {
       totalStudents: studentExams.length,
       averagePercentage: Math.round(avg * 100) / 100,
@@ -140,10 +147,12 @@ async function buildPDF(studentExam) {
     doc.fillColor('#000000').fontSize(12).font('Helvetica-Bold').text('Student Information');
     doc.moveDown(0.3);
 
+    const classLabel = CLASS_LEVEL_LABELS[student.classLevel] || student.classLevel;
+
     const info = [
       ['Name', student.name],
       ['Code', student.code],
-      ['Class', `Grade ${student.class}`],
+      ['Class', classLabel],
       ['Exam', exam.title],
       ['Subject', exam.subject],
       ['Date', new Date(studentExam.evaluatedAt).toLocaleDateString('en-US', { dateStyle: 'long' })],
@@ -179,7 +188,7 @@ async function buildPDF(studentExam) {
     // ── Per-Question Breakdown ───────────────────────────────────────────────
     doc.font('Helvetica-Bold').fontSize(14).text('Answer Breakdown').moveDown(0.5);
 
-    studentExam.answers.forEach((answer, idx) => {
+    studentExam.answers.forEach((answer) => {
       const questionData = exam.questions.find((q) => q.number === answer.questionNumber);
 
       doc

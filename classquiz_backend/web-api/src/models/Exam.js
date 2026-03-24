@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { CLASS_LEVELS, SUBJECTS } = require('../utils/constants');
 
 const questionSchema = new mongoose.Schema(
   {
@@ -27,12 +28,18 @@ const examSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Subject is required'],
       trim: true,
+      enum: {
+        values: SUBJECTS,
+        message: 'Subject must be one of: ' + SUBJECTS.join(', '),
+      },
     },
-    class: {
-      type: Number,
-      required: [true, 'Target class is required'],
-      min: 1,
-      max: 6,
+    classLevel: {
+      type: String,
+      required: [true, 'Target class level is required'],
+      enum: {
+        values: CLASS_LEVELS,
+        message: 'Class level must be one of: ' + CLASS_LEVELS.join(', '),
+      },
     },
     totalScore: {
       type: Number,
@@ -71,7 +78,7 @@ const examSchema = new mongoose.Schema(
   }
 );
 
-examSchema.index({ class: 1, status: 1 });
+examSchema.index({ classLevel: 1, status: 1 });
 examSchema.index({ subject: 1 });
 examSchema.index({ createdAt: -1 });
 

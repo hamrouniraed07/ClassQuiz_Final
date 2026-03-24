@@ -3,10 +3,16 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, FileText, Upload, RefreshCw, X, CheckCircle2, Clock, Archive } from 'lucide-react'
 import { useExams, useCreateExam, useReprocessExam } from '@/hooks/useApi'
 import { StatusBadge, LoadingPage, EmptyState, PageHeader, SectionCard } from '@/components/shared'
+import { CLASS_LEVELS, CLASS_LEVEL_LABELS, SUBJECTS, SUBJECT_META } from '@/constants/domain'
+import type { ClassLevel, Subject } from '@/constants/domain'
 import type { Exam } from '@/types'
 
 function CreateExamModal({ onClose }: { onClose: () => void }) {
-  const [form, setForm] = useState({ title: '', subject: '', class: 3 })
+  const [form, setForm] = useState<{ title: string; subject: Subject; classLevel: ClassLevel }>({
+    title: '',
+    subject: SUBJECTS[0],
+    classLevel: '3eme',
+  })
   const [correctedFiles, setCorrectedFiles] = useState<File[]>([])
   const [blankFiles, setBlankFiles] = useState<File[]>([])
   const [error, setError] = useState('')
@@ -21,7 +27,7 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
     const fd = new FormData()
     fd.append('title', form.title)
     fd.append('subject', form.subject)
-    fd.append('class', String(form.class))
+    fd.append('classLevel', form.classLevel)
     correctedFiles.forEach(f => fd.append('correctedExam', f))
     blankFiles.forEach(f => fd.append('blankExam', f))
     try {
@@ -51,14 +57,18 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1.5">Subject</label>
-              <input value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })}
-                className="input-dark" placeholder="Mathematics" required />
+              <select value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value as Subject })}
+                className="input-dark" dir="rtl">
+                {SUBJECTS.map(s => (
+                  <option key={s} value={s}>{SUBJECT_META[s].emoji} {s} ({SUBJECT_META[s].en})</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1.5">Target Class</label>
-              <select value={form.class} onChange={e => setForm({ ...form, class: parseInt(e.target.value) })}
+              <select value={form.classLevel} onChange={e => setForm({ ...form, classLevel: e.target.value as ClassLevel })}
                 className="input-dark">
-                {[1,2,3,4,5,6].map(c => <option key={c} value={c}>Grade {c}</option>)}
+                {CLASS_LEVELS.map(cl => <option key={cl} value={cl}>{CLASS_LEVEL_LABELS[cl]}</option>)}
               </select>
             </div>
           </div>
@@ -113,6 +123,7 @@ function ExamCard({ exam, index }: { exam: Exam; index: number }) {
   const statusIcon = { active: CheckCircle2, processing: Clock, draft: FileText, archived: Archive }
   const StatusIcon = statusIcon[exam.status] ?? FileText
   const questionCount = Array.isArray(exam.questions) ? exam.questions.length : 0
+  const subjectMeta = SUBJECT_META[exam.subject as Subject]
 
   return (
     <motion.div
@@ -127,7 +138,9 @@ function ExamCard({ exam, index }: { exam: Exam; index: number }) {
         <StatusBadge status={exam.status} />
       </div>
       <h3 className="text-sm font-bold text-white mb-0.5 truncate">{exam.title}</h3>
-      <p className="text-xs text-slate-400 mb-3">{exam.subject} · Grade {exam.class}</p>
+      <p className="text-xs text-slate-400 mb-3">
+        {subjectMeta ? `${subjectMeta.emoji} ${subjectMeta.en}` : exam.subject} · {CLASS_LEVEL_LABELS[exam.classLevel] ?? exam.classLevel}
+      </p>
       <div className="flex items-center justify-between text-xs">
         <span className="text-slate-500">{questionCount} questions · {exam.totalScore ?? 0} pts</span>
         {(exam.status === 'draft' || exam.status === 'processing') && (

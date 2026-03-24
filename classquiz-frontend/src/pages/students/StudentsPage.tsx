@@ -1,14 +1,15 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Search, Pencil, Trash2, Users, X, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react'
-import { useStudents, useCreateStudent, useDeleteStudent } from '@/hooks/useApi'
+import { Plus, Search, Pencil, Trash2, Users, X, ChevronLeft, ChevronRight, BookOpen, Upload, FileSpreadsheet, CheckCircle, AlertTriangle } from 'lucide-react'
+import { useStudents, useCreateStudent, useDeleteStudent, useImportCSV } from '@/hooks/useApi'
 import { StatCard, LoadingPage, EmptyState, StatusBadge, PageHeader } from '@/components/shared'
-import type { Student } from '@/types'
+import { CLASS_LEVELS, CLASS_LEVEL_LABELS } from '@/constants/domain'
+import type { ClassLevel } from '@/constants/domain'
+import type { Student, CSVImportResult } from '@/types'
 
-const CLASS_LABELS = ['', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6']
-
+// ── Add Student Modal ─────────────────────────────────────────────────────────
 function AddStudentModal({ onClose }: { onClose: () => void }) {
-  const [form, setForm] = useState({ name: '', code: '', class: 1 })
+  const [form, setForm] = useState<{ name: string; code: string; classLevel: ClassLevel }>({ name: '', code: '', classLevel: '1ere' })
   const [error, setError] = useState('')
   const create = useCreateStudent()
 
@@ -51,10 +52,10 @@ function AddStudentModal({ onClose }: { onClose: () => void }) {
               className="input-dark font-mono" placeholder="STU-2024-001" required />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">Class</label>
-            <select value={form.class} onChange={e => setForm({ ...form, class: parseInt(e.target.value) })}
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">Class Level</label>
+            <select value={form.classLevel} onChange={e => setForm({ ...form, classLevel: e.target.value as ClassLevel })}
               className="input-dark">
-              {[1,2,3,4,5,6].map(c => <option key={c} value={c}>{CLASS_LABELS[c]}</option>)}
+              {CLASS_LEVELS.map(cl => <option key={cl} value={cl}>{CLASS_LEVEL_LABELS[cl]}</option>)}
             </select>
           </div>
           {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">{error}</p>}
@@ -70,13 +71,140 @@ function AddStudentModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ── CSV Import Modal ──────────────────────────────────────────────────────────
+function ImportCSVModal({ onClose }: { onClose: () => void }) {
+  const [file, setFile] = useState<File | null>(null)
+  const [result, setResult] = useState<CSVImportResult | null>(null)
+  const [error, setError] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+  const importCSV = useImportCSV()
+
+  const handleImport = async () => {
+    if (!file) return
+    setError('')
+    setResult(null)
+    try {
+      const res = await importCSV.mutateAsync(file)
+      setResult(res)
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'CSV import failed')
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+        className="glass-card w-full max-w-lg p-6"
+      >
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <FileSpreadsheet className="w-4 h-4 text-teal-400" />
+            Import Students from CSV
+          </h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/[0.07] text-slate-400 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* CSV Format Guide */}
+        <div className="mb-4 p-3 rounded-lg bg-sky-500/[0.06] border border-sky-500/15">
+          <p className="text-xs font-semibold text-sky-400 mb-1.5">CSV Format Required:</p>
+          <code className="text-[11px] text-slate-300 block font-mono leading-relaxed">
+            name,studentCode,classLevel<br />
+            Ahmed Ben Ali,STU-2024-001,3eme<br />
+            Sara Mbarek,STU-2024-002,5eme
+          </code>
+          <p className="text-[10px] text-slate-500 mt-1.5">
+            Valid class levels: {CLASS_LEVELS.join(', ')}
+          </p>
+        </div>
+
+        {/* File Upload */}
+        <div
+          onClick={() => fileRef.current?.click()}
+          className={`drop-zone p-6 text-center cursor-pointer mb-4 ${file ? 'border-teal-500/40 bg-teal-500/[0.04]' : ''}`}
+        >
+          <Upload className="w-6 h-6 text-slate-500 mx-auto mb-2" />
+          {file
+            ? <p className="text-xs text-teal-400 font-medium">{file.name} ({(file.size / 1024).toFixed(1)} KB)</p>
+            : <p className="text-xs text-slate-400">Click to select a CSV file</p>}
+          <input ref={fileRef} type="file" accept=".csv" className="hidden"
+            onChange={e => { setFile(e.target.files?.[0] ?? null); setResult(null); setError('') }} />
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+            <p className="text-xs text-red-400">{error}</p>
+          </div>
+        )}
+
+        {/* Result Summary */}
+        {result && (
+          <div className="mb-4 space-y-3">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="p-2.5 rounded-lg bg-slate-800/50 text-center">
+                <p className="text-lg font-bold text-white">{result.summary.totalRows}</p>
+                <p className="text-[10px] text-slate-500">Total Rows</p>
+              </div>
+              <div className="p-2.5 rounded-lg bg-emerald-500/10 text-center">
+                <p className="text-lg font-bold text-emerald-400">{result.summary.successCount}</p>
+                <p className="text-[10px] text-slate-500">Imported</p>
+              </div>
+              <div className="p-2.5 rounded-lg bg-red-500/10 text-center">
+                <p className="text-lg font-bold text-red-400">{result.summary.failedCount}</p>
+                <p className="text-[10px] text-slate-500">Failed</p>
+              </div>
+            </div>
+
+            {result.errors.length > 0 && (
+              <div className="max-h-32 overflow-y-auto rounded-lg bg-red-500/[0.05] border border-red-500/15 p-2">
+                {result.errors.slice(0, 10).map((err, i) => (
+                  <div key={i} className="flex items-start gap-2 py-1 text-[10px]">
+                    <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0 mt-0.5" />
+                    <span className="text-slate-400">
+                      Row {err.row}: <span className="text-red-400">{err.field}</span> — {err.reason}
+                    </span>
+                  </div>
+                ))}
+                {result.errors.length > 10 && (
+                  <p className="text-[10px] text-slate-500 pt-1">…and {result.errors.length - 10} more errors</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-3">
+          <button type="button" onClick={onClose} className="btn-ghost flex-1">
+            {result ? 'Close' : 'Cancel'}
+          </button>
+          {!result && (
+            <button onClick={handleImport} disabled={!file || importCSV.isPending} className="btn-primary flex-1">
+              {importCSV.isPending ? 'Importing…' : 'Import CSV'}
+            </button>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function StudentsPage() {
   const [showModal, setShowModal] = useState(false)
+  const [showCSVModal, setShowCSVModal] = useState(false)
   const [search, setSearch] = useState('')
-  const [classFilter, setClassFilter] = useState<number | undefined>()
+  const [classFilter, setClassFilter] = useState<ClassLevel | undefined>()
   const [page, setPage] = useState(1)
 
-  const { data, isLoading } = useStudents({ search: search || undefined, class: classFilter, page, limit: 20 })
+  const { data, isLoading } = useStudents({ search: search || undefined, classLevel: classFilter, page, limit: 20 })
   const deleteStudent = useDeleteStudent()
 
   if (isLoading) return <LoadingPage />
@@ -90,22 +218,27 @@ export default function StudentsPage() {
         title="Students"
         subtitle={`${pagination?.total ?? 0} students enrolled`}
         action={
-          <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Add Student
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowCSVModal(true)} className="btn-ghost flex items-center gap-2 text-teal-400 border-teal-500/20 hover:bg-teal-500/10">
+              <FileSpreadsheet className="w-4 h-4" /> Import CSV
+            </button>
+            <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Add Student
+            </button>
+          </div>
         }
       />
 
-      {/* Class filter pills */}
+      {/* Class level filter pills */}
       <div className="flex gap-2 flex-wrap">
         <button onClick={() => { setClassFilter(undefined); setPage(1) }}
           className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${!classFilter ? 'bg-amber-500 text-white' : 'btn-ghost'}`}>
           All Classes
         </button>
-        {[1,2,3,4,5,6].map(c => (
-          <button key={c} onClick={() => { setClassFilter(c); setPage(1) }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${classFilter === c ? 'bg-amber-500 text-white' : 'btn-ghost'}`}>
-            Grade {c}
+        {CLASS_LEVELS.map(cl => (
+          <button key={cl} onClick={() => { setClassFilter(cl); setPage(1) }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${classFilter === cl ? 'bg-amber-500 text-white' : 'btn-ghost'}`}>
+            {CLASS_LEVEL_LABELS[cl]}
           </button>
         ))}
       </div>
@@ -143,17 +276,17 @@ export default function StudentsPage() {
                       </div>
                     </td>
                     <td><code className="text-xs text-amber-400 font-mono bg-amber-500/10 px-2 py-0.5 rounded">{s.code}</code></td>
-                    <td><span className="badge-sky">{CLASS_LABELS[s.class]}</span></td>
-                    <td><StatusBadge status={s.isActive ? 'active' : 'archived'} /></td>
+                    <td><span className="badge-sky">{CLASS_LEVEL_LABELS[s.classLevel]}</span></td>
+                    <td><StatusBadge status={s.isActive ? 'active' : 'inactive'} /></td>
                     <td className="text-slate-500 text-xs">{new Date(s.createdAt).toLocaleDateString()}</td>
                     <td>
                       <div className="flex items-center justify-end gap-1">
-                        <button className="p-1.5 rounded-lg hover:bg-white/[0.07] text-slate-400 hover:text-white transition-colors">
+                        <button className="p-1.5 rounded-lg hover:bg-white/[0.07] text-slate-400 hover:text-amber-400 transition-colors">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => deleteStudent.mutate(s._id)}
-                          className="p-1.5 rounded-lg hover:bg-red-500/15 text-slate-400 hover:text-red-400 transition-colors">
+                          className="p-1.5 rounded-lg hover:bg-red-500/10 text-slate-400 hover:text-red-400 transition-colors">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -168,13 +301,13 @@ export default function StudentsPage() {
         {/* Pagination */}
         {pagination && pagination.pages > 1 && (
           <div className="flex items-center justify-between p-4 border-t border-white/[0.05]">
-            <p className="text-xs text-slate-500">Page {page} of {pagination.pages}</p>
-            <div className="flex gap-2">
-              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+            <span className="text-xs text-slate-500">Page {pagination.page} of {pagination.pages}</span>
+            <div className="flex gap-1">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
                 className="p-1.5 rounded-lg hover:bg-white/[0.07] text-slate-400 disabled:opacity-30 transition-colors">
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <button onClick={() => setPage(p => Math.min(pagination.pages, p + 1))} disabled={page === pagination.pages}
+              <button onClick={() => setPage(p => Math.min(pagination.pages, p + 1))} disabled={page >= pagination.pages}
                 className="p-1.5 rounded-lg hover:bg-white/[0.07] text-slate-400 disabled:opacity-30 transition-colors">
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -185,6 +318,7 @@ export default function StudentsPage() {
 
       <AnimatePresence>
         {showModal && <AddStudentModal onClose={() => setShowModal(false)} />}
+        {showCSVModal && <ImportCSVModal onClose={() => setShowCSVModal(false)} />}
       </AnimatePresence>
     </div>
   )

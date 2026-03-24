@@ -1,9 +1,11 @@
-import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import type {
   Student, Exam, StudentExam, Validation, BatchUpload,
-  CreateStudentDto, LoginCredentials, AuthResponse, DashboardStats
+  CreateStudentDto, LoginCredentials, AuthResponse, DashboardStats,
+  CSVImportResult,
 } from '@/types'
+import type { ClassLevel } from '@/constants/domain'
 
 // ── Keys ──────────────────────────────────────────────────────────────────────
 export const QK = {
@@ -55,7 +57,7 @@ export const useDashboard = () =>
   })
 
 // ── Students ──────────────────────────────────────────────────────────────────
-export const useStudents = (params?: { class?: number; search?: string; page?: number; limit?: number }) =>
+export const useStudents = (params?: { classLevel?: ClassLevel; search?: string; page?: number; limit?: number }) =>
   useQuery({
     queryKey: QK.students(params),
     queryFn: async () => {
@@ -114,8 +116,23 @@ export const useDeleteStudent = () => {
   })
 }
 
+export const useImportCSV = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      const { data } = await api.post('/students/import-csv', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return data.data as CSVImportResult
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['students'] }),
+  })
+}
+
 // ── Exams ─────────────────────────────────────────────────────────────────────
-export const useExams = (params?: { class?: number; status?: string; page?: number }) =>
+export const useExams = (params?: { classLevel?: ClassLevel; status?: string; page?: number }) =>
   useQuery({
     queryKey: QK.exams(params),
     queryFn: async () => {
@@ -156,7 +173,7 @@ export const useReprocessExam = () => {
 }
 
 // ── Student Exams ─────────────────────────────────────────────────────────────
-export const useStudentExams = (params?: { examId?: string; studentId?: string; status?: string; page?: number }) =>
+export const useStudentExams = (params?: { examId?: string; studentId?: string; status?: string; page?: number; limit?: number }) =>
   useQuery({
     queryKey: QK.studentExams(params),
     queryFn: async () => {
