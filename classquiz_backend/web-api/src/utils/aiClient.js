@@ -24,20 +24,15 @@ async function callAIService(endpoint, options = {}) {
       let errorMessage = `AI Service error [${response.status}]`;
       try {
         const errBody = await response.json();
-        // FastAPI can return { detail: "string" } or { detail: { ... } }
         if (typeof errBody.detail === 'string') {
           errorMessage += `: ${errBody.detail}`;
         } else if (errBody.detail) {
           errorMessage += `: ${JSON.stringify(errBody.detail)}`;
-        } else if (errBody.message) {
-          errorMessage += `: ${errBody.message}`;
         } else {
           errorMessage += `: ${JSON.stringify(errBody)}`;
         }
       } catch {
-        // Could not parse JSON body
-        const textBody = await response.text().catch(() => 'Unknown error');
-        errorMessage += `: ${textBody}`;
+        errorMessage += ': Unknown error';
       }
       throw new Error(errorMessage);
     }
@@ -55,12 +50,19 @@ async function callAIService(endpoint, options = {}) {
 }
 
 /**
- * Send multipart form data (images) to AI service
+ * Send multipart form data (images) to AI service.
+ *
+ * Node 20 native fetch does not understand the `form-data` npm package directly.
+ * We use formData.getBuffer() + formData.getHeaders() to serialize it properly.
  */
 async function sendFormData(endpoint, formData) {
+  const headers = formData.getHeaders();
+  const buffer = formData.getBuffer();
+
   return callAIService(endpoint, {
     method: 'POST',
-    body: formData,
+    headers: headers,
+    body: buffer,
   });
 }
 

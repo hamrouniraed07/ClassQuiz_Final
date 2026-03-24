@@ -4,14 +4,27 @@ const { CLASS_LEVELS, SUBJECTS } = require('../utils/constants');
 const { success, created, notFound, badRequest, error } = require('../utils/response');
 const FormData = require('form-data');
 const fs = require('fs');
+const path = require('path');
 const logger = require('../utils/logger');
 
 const OCR_THRESHOLD = parseInt(process.env.OCR_CONFIDENCE_THRESHOLD) || 70;
 const OCR_MAX_RETRIES = 3;
 
 /**
+ * Guess MIME type from file extension
+ */
+function getMimeType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const map = {
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+    '.png': 'image/png', '.webp': 'image/webp',
+    '.tiff': 'image/tiff', '.tif': 'image/tiff',
+  };
+  return map[ext] || 'image/jpeg';
+}
+
+/**
  * POST /api/exams
- * Create exam record and upload images. Does NOT trigger OCR.
  */
 const createExam = async (req, res) => {
   const { title, subject, classLevel } = req.body;
@@ -51,31 +64,47 @@ const createExam = async (req, res) => {
 };
 
 /**
- * Helper: build FormData from exam images
+ * Build FormData with proper content types so FastAPI recognizes UploadFile fields
  */
 function buildOCRFormData(exam) {
   const form = new FormData();
+
   for (const img of exam.correctedExamImages) {
-    form.append('corrected_images', fs.createReadStream(img.path), {
-      filename: img.originalName,
+    const filePath = img.path;
+    const fileName = img.originalName || path.basename(filePath);
+    const contentType = getMimeType(filePath);
+
+    form.append('corrected_images', fs.createReadStream(filePath), {
+      filename: fileName,
+      contentType: contentType,
     });
   }
-  for (const img of (exam.blankExamImages || [])) {
-    form.append('blank_images', fs.createReadStream(img.path), {
-      filename: img.originalName,
-    });
+
+  if (exam.blankExamImages && exam.blankExamImages.length > 0) {
+    for (const img of exam.blankExamImages) {
+      const filePath = img.path;
+      const fileName = img.originalName || path.basename(filePath);
+      const contentType = getMimeType(filePath);
+
+      form.append('blank_images', fs.createReadStream(filePath), {
+        filename: fileName,
+        contentType: contentType,
+      });
+    }
   }
+
   return form;
 }
 
 /**
- * Helper: call OCR with retries
+ * Call OCR with retries
  */
 async function callOCRWithRetry(exam, maxRetries = OCR_MAX_RETRIES) {
   let lastError = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       logger.info(`OCR attempt ${attempt}/${maxRetries} for exam ${exam._id}`);
+      // Rebuild form each time — streams are consumed after first read
       const form = buildOCRFormData(exam);
       const result = await sendFormData('/ocr/extract-exam', form);
       return result;
@@ -83,7 +112,6 @@ async function callOCRWithRetry(exam, maxRetries = OCR_MAX_RETRIES) {
       lastError = err;
       logger.warn(`OCR attempt ${attempt} failed for exam ${exam._id}: ${err.message}`);
       if (attempt < maxRetries) {
-        // Wait 2 seconds before retry
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     }
@@ -94,14 +122,20 @@ async function callOCRWithRetry(exam, maxRetries = OCR_MAX_RETRIES) {
 /**
  * POST /api/exams/:id/ocr
  * Run OCR and RETURN extracted data. Does NOT save to DB.
- * Retries up to 3 times on failure.
  */
 const triggerOCR = async (req, res) => {
   const exam = await Exam.findById(req.params.id);
   if (!exam) return notFound(res, 'Exam not found');
 
-  if (!exam.correctedExamImages.length) {
+  if (!exam.correctedExamImages || !exam.correctedExamImages.length) {
     return badRequest(res, 'No corrected exam images to process');
+  }
+
+  // Verify files exist on disk
+  for (const img of exam.correctedExamImages) {
+    if (!fs.existsSync(img.path)) {
+      return badRequest(res, `Image file not found on disk: ${img.originalName}. Please re-upload the exam.`);
+    }
   }
 
   await Exam.findByIdAndUpdate(exam._id, { status: 'processing' });
@@ -121,7 +155,6 @@ const triggerOCR = async (req, res) => {
       needsValidation: (q.confidence_score != null ? q.confidence_score : overallConfidence) < OCR_THRESHOLD,
     }));
 
-    // Reset to draft — data is NOT saved
     await Exam.findByIdAndUpdate(exam._id, { status: 'draft' });
 
     logger.info(`OCR extraction for exam ${exam._id}: ${extractedQuestions.length} questions, confidence: ${overallConfidence.toFixed(1)}%`);
@@ -136,14 +169,13 @@ const triggerOCR = async (req, res) => {
     }, 'OCR extraction complete. Review and confirm to save.');
   } catch (err) {
     await Exam.findByIdAndUpdate(exam._id, { status: 'draft' });
-    logger.error(`OCR failed for exam ${exam._id}:`, err.message);
+    logger.error(`OCR failed for exam ${exam._id}: ${err.message}`);
     return error(res, `OCR processing failed: ${err.message}`, 500);
   }
 };
 
 /**
  * POST /api/exams/:id/confirm
- * Admin sends reviewed questions → saved to DB → exam activated.
  */
 const confirmExam = async (req, res) => {
   const { questions } = req.body;
