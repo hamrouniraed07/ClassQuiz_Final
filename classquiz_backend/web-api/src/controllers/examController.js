@@ -1,4 +1,5 @@
 const Exam = require('../models/Exam');
+const StudentExam = require('../models/StudentExam');
 const { sendFormData } = require('../utils/aiClient');
 const { CLASS_LEVELS, SUBJECTS } = require('../utils/constants');
 const { success, created, notFound, badRequest, error } = require('../utils/response');
@@ -12,10 +13,10 @@ const OCR_MAX_RETRIES = 3;
 
 function getMimeType(filePath) {
   const ext = path.extname(filePath).toLowerCase();
-  const map = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.tiff': 'image/tiff', '.tif': 'image/tiff' };
-  return map[ext] || 'image/jpeg';
+  return { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.tiff': 'image/tiff', '.tif': 'image/tiff' }[ext] || 'image/jpeg';
 }
 
+// ── CREATE EXAM (no auto-OCR) ─────────────────────────────────────────────────
 const createExam = async (req, res) => {
   const { title, subject, classLevel } = req.body;
   if (subject && !SUBJECTS.includes(subject)) return badRequest(res, `Invalid subject. Must be one of: ${SUBJECTS.join(', ')}`);
@@ -34,39 +35,31 @@ const createExam = async (req, res) => {
   return created(res, exam, 'Exam created. Use POST /exams/:id/ocr to extract questions.');
 };
 
-function buildOCRFormData(exam) {
+// ── OCR: EXTRACT ONLY (no DB save) ───────────────────────────────────────────
+function buildOCRForm(exam) {
   const form = new FormData();
-
-  // Add corrected images (required)
   for (const img of exam.correctedExamImages) {
-    if (!fs.existsSync(img.path)) {
-      throw new Error(`File not found: ${img.originalName}`);
-    }
+    if (!fs.existsSync(img.path)) throw new Error(`File not found: ${img.originalName}`);
     form.append('corrected_images', fs.createReadStream(img.path), {
       filename: img.originalName || path.basename(img.path),
       contentType: getMimeType(img.path),
     });
   }
-
-  // NOTE: blank_images are intentionally NOT sent.
-  // FastAPI's Optional[List[UploadFile]] has issues with single-file uploads from Node.
-  // The OCR works well without blank images — they only marginally improve accuracy.
-
+  // blank_images intentionally not sent — causes FastAPI validation issues with node form-data
   return form;
 }
 
-async function callOCRWithRetry(exam, maxRetries = OCR_MAX_RETRIES) {
-  let lastError = null;
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+async function callOCRWithRetry(exam) {
+  let lastError;
+  for (let attempt = 1; attempt <= OCR_MAX_RETRIES; attempt++) {
     try {
-      logger.info(`OCR attempt ${attempt}/${maxRetries} for exam ${exam._id}`);
-      const form = buildOCRFormData(exam);
-      const result = await sendFormData('/ocr/extract-exam', form);
-      return result;
+      logger.info(`OCR attempt ${attempt}/${OCR_MAX_RETRIES} for exam ${exam._id}`);
+      const form = buildOCRForm(exam);
+      return await sendFormData('/ocr/extract-exam', form);
     } catch (err) {
       lastError = err;
       logger.warn(`OCR attempt ${attempt} failed: ${err.message}`);
-      if (attempt < maxRetries) await new Promise((r) => setTimeout(r, 2000));
+      if (attempt < OCR_MAX_RETRIES) await new Promise((r) => setTimeout(r, 2000));
     }
   }
   throw lastError;
@@ -75,10 +68,10 @@ async function callOCRWithRetry(exam, maxRetries = OCR_MAX_RETRIES) {
 const triggerOCR = async (req, res) => {
   const exam = await Exam.findById(req.params.id);
   if (!exam) return notFound(res, 'Exam not found');
-  if (!exam.correctedExamImages || !exam.correctedExamImages.length) return badRequest(res, 'No corrected exam images');
+  if (!exam.correctedExamImages?.length) return badRequest(res, 'No corrected exam images');
 
   await Exam.findByIdAndUpdate(exam._id, { status: 'processing' });
-raed
+
   try {
     const result = await callOCRWithRetry(exam);
     const overallConfidence = result.confidence_score || 0;
@@ -89,10 +82,11 @@ raed
       correctAnswer: q.correct_answer,
       maxScore: q.max_score,
       type: q.type || 'short_answer',
-      confidence: Math.round((q.confidence_score != null ? q.confidence_score : overallConfidence) * 100) / 100,
-      needsValidation: (q.confidence_score != null ? q.confidence_score : overallConfidence) < OCR_THRESHOLD,
+      confidence: Math.round((q.confidence_score ?? overallConfidence) * 100) / 100,
+      needsValidation: (q.confidence_score ?? overallConfidence) < OCR_THRESHOLD,
     }));
 
+    // Reset to draft — data NOT saved to DB
     await Exam.findByIdAndUpdate(exam._id, { status: 'draft' });
 
     logger.info(`OCR done for exam ${exam._id}: ${extractedQuestions.length} questions, confidence: ${overallConfidence.toFixed(1)}%`);
@@ -112,6 +106,7 @@ raed
   }
 };
 
+// ── CONFIRM EXAM (admin saves validated questions) ────────────────────────────
 const confirmExam = async (req, res) => {
   const { questions } = req.body;
   if (!questions || !Array.isArray(questions) || !questions.length) return badRequest(res, 'questions array is required');
@@ -133,8 +128,7 @@ const confirmExam = async (req, res) => {
   return success(res, updated, 'Exam confirmed and activated');
 };
 
-const reprocessExam = async (req, res) => triggerOCR(req, res);
-
+// ── CRUD ──────────────────────────────────────────────────────────────────────
 const getExams = async (req, res) => {
   const { classLevel, status, page = 1, limit = 20 } = req.query;
   const filter = {};
@@ -155,6 +149,8 @@ const getExam = async (req, res) => {
 
 const updateExam = async (req, res) => {
   const { title, subject, classLevel, questions, status } = req.body;
+  if (subject && !SUBJECTS.includes(subject)) return badRequest(res, 'Invalid subject');
+  if (classLevel && !CLASS_LEVELS.includes(classLevel)) return badRequest(res, 'Invalid class level');
   const exam = await Exam.findByIdAndUpdate(req.params.id, {
     ...(title && { title }), ...(subject && { subject }), ...(classLevel && { classLevel }),
     ...(questions && { questions, totalScore: questions.reduce((s, q) => s + q.maxScore, 0) }),
@@ -167,16 +163,11 @@ const updateExam = async (req, res) => {
 const deleteExam = async (req, res) => {
   const exam = await Exam.findById(req.params.id);
   if (!exam) return notFound(res, 'Exam not found');
-
-  // Delete associated student exams
-  const StudentExam = require('../models/StudentExam');
   await StudentExam.deleteMany({ exam: req.params.id });
-
-  // Permanently remove exam
   await Exam.findByIdAndDelete(req.params.id);
-
   return success(res, null, 'Exam deleted permanently');
 };
 
+const reprocessExam = async (req, res) => triggerOCR(req, res);
 
 module.exports = { createExam, getExams, getExam, updateExam, deleteExam, reprocessExam, triggerOCR, confirmExam };

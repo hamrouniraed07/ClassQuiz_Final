@@ -3,14 +3,14 @@ const logger = require('./logger');
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://ai-service:8000';
 const TIMEOUT_MS = parseInt(process.env.AI_SERVICE_TIMEOUT) || 120000;
 
-// Use node-fetch (v3, ESM-compatible) which natively supports form-data streams.
-// Node 20's native fetch does NOT work with the form-data npm package.
-let nodeFetch;
+// Node 20 native fetch does NOT work with the form-data npm package.
+// We must use node-fetch v3 which has built-in form-data stream support.
+let _fetch;
 async function getFetch() {
-  if (!nodeFetch) {
-    nodeFetch = (await import('node-fetch')).default;
+  if (!_fetch) {
+    _fetch = (await import('node-fetch')).default;
   }
-  return nodeFetch;
+  return _fetch;
 }
 
 async function callAIService(endpoint, options = {}) {
@@ -57,15 +57,11 @@ async function callAIService(endpoint, options = {}) {
   }
 }
 
-/**
- * Send multipart form data to AI service.
- * Uses node-fetch which natively supports form-data streams — no buffer conversion needed.
- */
 async function sendFormData(endpoint, formData) {
+  // node-fetch automatically reads form-data streams and sets correct Content-Type with boundary
   return callAIService(endpoint, {
     method: 'POST',
     body: formData,
-    // node-fetch automatically sets Content-Type with correct boundary from form-data
   });
 }
 
