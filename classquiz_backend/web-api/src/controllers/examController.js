@@ -165,9 +165,18 @@ const updateExam = async (req, res) => {
 };
 
 const deleteExam = async (req, res) => {
-  const exam = await Exam.findByIdAndUpdate(req.params.id, { status: 'archived' }, { new: true });
+  const exam = await Exam.findById(req.params.id);
   if (!exam) return notFound(res, 'Exam not found');
-  return success(res, null, 'Exam archived');
+
+  // Delete associated student exams
+  const StudentExam = require('../models/StudentExam');
+  await StudentExam.deleteMany({ exam: req.params.id });
+
+  // Permanently remove exam
+  await Exam.findByIdAndDelete(req.params.id);
+
+  return success(res, null, 'Exam deleted permanently');
 };
+
 
 module.exports = { createExam, getExams, getExam, updateExam, deleteExam, reprocessExam, triggerOCR, confirmExam };
