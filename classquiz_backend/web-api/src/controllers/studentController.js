@@ -9,7 +9,7 @@ const { success, created, notFound, badRequest, conflict } = require('../utils/r
 const createStudent = async (req, res) => {
   const { name, code, classLevel } = req.body;
 
-  if (!CLASS_LEVELS.includes(classLevel)) {
+  if (classLevel && !CLASS_LEVELS.includes(classLevel)) {
     return badRequest(res, `Invalid class level. Must be one of: ${CLASS_LEVELS.join(', ')}`);
   }
 
@@ -24,7 +24,8 @@ const createStudent = async (req, res) => {
 
 /**
  * GET /api/students
- * Supports: ?classLevel=3eme&search=john&page=1&limit=20&active=true
+ * Supports: ?classLevel=3eme&search=john&page=1&limit=20&active=true|false|all
+ * Default: only active students (isActive: true)
  */
 const getStudents = async (req, res) => {
   const {
@@ -39,7 +40,18 @@ const getStudents = async (req, res) => {
 
   const filter = {};
   if (classLevel) filter.classLevel = classLevel;
-  if (active !== undefined) filter.isActive = active === 'true';
+
+  // Default: show only active students
+  // Pass ?active=all to see everyone, ?active=false for inactive only
+  if (active === 'false') {
+    filter.isActive = false;
+  } else if (active === 'all') {
+    // No filter on isActive — show everyone
+  } else {
+    // Default: only active
+    filter.isActive = true;
+  }
+
   if (search) filter.$text = { $search: search };
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -110,15 +122,20 @@ const updateStudent = async (req, res) => {
 
 /**
  * DELETE /api/students/:id
+ * Hard delete — permanently removes the student from the database.
+ * Also cleans up associated student exams.
  */
 const deleteStudent = async (req, res) => {
-  const student = await Student.findByIdAndUpdate(
-    req.params.id,
-    { isActive: false },
-    { new: true }
-  );
+  const student = await Student.findById(req.params.id);
   if (!student) return notFound(res, 'Student not found');
-  return success(res, null, 'Student deactivated successfully');
+
+  // Delete associated student exams
+  await StudentExam.deleteMany({ student: req.params.id });
+
+  // Permanently remove student
+  await Student.findByIdAndDelete(req.params.id);
+
+  return success(res, null, 'Student deleted permanently');
 };
 
 /**
@@ -152,22 +169,17 @@ const getStudentPerformance = async (req, res) => {
 };
 
 /**
- * Simple CSV parser — zero external dependencies.
- * Handles quoted fields and trims whitespace.
+ * Simple CSV parser
  */
 function parseCSVString(csvText) {
   const lines = csvText.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return { headers: [], rows: [] };
-
   const headers = lines[0].split(',').map((h) => h.trim());
   const rows = [];
-
   for (let i = 1; i < lines.length; i++) {
     const values = lines[i].split(',').map((v) => v.trim());
     const row = {};
-    headers.forEach((h, idx) => {
-      row[h] = values[idx] || '';
-    });
+    headers.forEach((h, idx) => { row[h] = values[idx] || ''; });
     rows.push(row);
   }
   return { headers, rows };
@@ -175,40 +187,27 @@ function parseCSVString(csvText) {
 
 /**
  * POST /api/students/import-csv
- * Parse uploaded CSV and bulk-create students.
- * CSV columns: name, studentCode, classLevel
  */
 const importCSV = async (req, res) => {
   const file = req.file;
   if (!file) return badRequest(res, 'CSV file is required');
 
-  // Parse CSV from buffer
   const csvText = file.buffer.toString('utf-8');
   const { headers, rows } = parseCSVString(csvText);
 
-  if (!rows.length) {
-    return badRequest(res, 'CSV file is empty or has no data rows');
-  }
+  if (!rows.length) return badRequest(res, 'CSV file is empty');
 
-  // Validate headers
   const requiredCols = ['name', 'studentCode', 'classLevel'];
   const missingCols = requiredCols.filter((col) => !headers.includes(col));
   if (missingCols.length > 0) {
-    return badRequest(
-      res,
-      `CSV missing required columns: ${missingCols.join(', ')}. Expected: name, studentCode, classLevel`
-    );
+    return badRequest(res, `CSV missing columns: ${missingCols.join(', ')}`);
   }
 
   const results = [];
   const errors = [];
-
-  // Collect existing codes for duplicate check
   const allCodes = rows.map((r) => (r.studentCode || '').trim().toUpperCase()).filter(Boolean);
   const existingStudents = await Student.find({ code: { $in: allCodes } }).select('code');
   const existingCodes = new Set(existingStudents.map((s) => s.code));
-
-  // Track codes seen in this import to detect intra-CSV duplicates
   const seenCodes = new Set();
 
   for (let i = 0; i < rows.length; i++) {
@@ -218,71 +217,30 @@ const importCSV = async (req, res) => {
     const code = (row.studentCode || '').trim().toUpperCase();
     const classLevel = (row.classLevel || '').trim();
 
-    if (!name || name.length < 2) {
-      errors.push({ row: rowNum, field: 'name', value: name, reason: 'Name is required (min 2 chars)' });
-      continue;
-    }
-
-    if (!code || !/^[A-Z0-9\-_]{3,20}$/.test(code)) {
-      errors.push({ row: rowNum, field: 'studentCode', value: code, reason: 'Code must be 3-20 alphanumeric characters' });
-      continue;
-    }
-
-    if (!CLASS_LEVELS.includes(classLevel)) {
-      errors.push({
-        row: rowNum,
-        field: 'classLevel',
-        value: classLevel,
-        reason: `Must be one of: ${CLASS_LEVELS.join(', ')}`,
-      });
-      continue;
-    }
-
-    if (existingCodes.has(code)) {
-      errors.push({ row: rowNum, field: 'studentCode', value: code, reason: 'Student code already exists in database' });
-      continue;
-    }
-
-    if (seenCodes.has(code)) {
-      errors.push({ row: rowNum, field: 'studentCode', value: code, reason: 'Duplicate code within CSV file' });
-      continue;
-    }
+    if (!name || name.length < 2) { errors.push({ row: rowNum, field: 'name', value: name, reason: 'Min 2 chars' }); continue; }
+    if (!code || !/^[A-Z0-9\-_]{3,20}$/.test(code)) { errors.push({ row: rowNum, field: 'studentCode', value: code, reason: 'Invalid format' }); continue; }
+    if (!CLASS_LEVELS.includes(classLevel)) { errors.push({ row: rowNum, field: 'classLevel', value: classLevel, reason: `Must be: ${CLASS_LEVELS.join(', ')}` }); continue; }
+    if (existingCodes.has(code)) { errors.push({ row: rowNum, field: 'studentCode', value: code, reason: 'Already exists' }); continue; }
+    if (seenCodes.has(code)) { errors.push({ row: rowNum, field: 'studentCode', value: code, reason: 'Duplicate in CSV' }); continue; }
 
     seenCodes.add(code);
     results.push({ name, code, classLevel });
   }
 
-  // Bulk insert valid students
   let insertedCount = 0;
   if (results.length > 0) {
     try {
       const inserted = await Student.insertMany(results, { ordered: false });
       insertedCount = inserted.length;
     } catch (err) {
-      if (err.insertedDocs) {
-        insertedCount = err.insertedDocs.length;
-      }
-      if (err.writeErrors) {
-        for (const we of err.writeErrors) {
-          errors.push({
-            row: 'bulk',
-            field: 'database',
-            value: we.errmsg,
-            reason: 'Database insertion failed',
-          });
-        }
-      }
+      if (err.insertedDocs) insertedCount = err.insertedDocs.length;
     }
   }
 
   return success(res, {
-    summary: {
-      totalRows: rows.length,
-      successCount: insertedCount,
-      failedCount: errors.length,
-    },
+    summary: { totalRows: rows.length, successCount: insertedCount, failedCount: errors.length },
     errors: errors.slice(0, 50),
-  }, `CSV import complete: ${insertedCount} created, ${errors.length} failed`);
+  }, `CSV import: ${insertedCount} created, ${errors.length} failed`);
 };
 
 module.exports = {
