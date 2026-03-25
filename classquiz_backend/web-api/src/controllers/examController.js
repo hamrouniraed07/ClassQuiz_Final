@@ -78,7 +78,7 @@ const triggerOCR = async (req, res) => {
   if (!exam.correctedExamImages || !exam.correctedExamImages.length) return badRequest(res, 'No corrected exam images');
 
   await Exam.findByIdAndUpdate(exam._id, { status: 'processing' });
-
+raed
   try {
     const result = await callOCRWithRetry(exam);
     const overallConfidence = result.confidence_score || 0;

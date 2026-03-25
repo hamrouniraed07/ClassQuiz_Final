@@ -102,6 +102,26 @@ export const useReprocessExam = () => {
   return useMutation({ mutationFn: async (id: string) => { await api.post(`/exams/${id}/reprocess`) }, onSuccess: (_d, id) => qc.invalidateQueries({ queryKey: QK.exam(id) }) })
 }
 
+export const useUpdateExam = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, ...dto }: { id: string; title?: string; subject?: string; classLevel?: string; status?: string }) => {
+      const { data } = await api.put(`/exams/${id}`, dto)
+      return data.data as Exam
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['exams'] }),
+  })
+}
+
+export const useDeleteExam = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/exams/${id}`)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['exams'] }),
+  })
+}
 /**
  * POST /exams/:id/ocr — returns extracted questions WITHOUT saving to DB
  */
