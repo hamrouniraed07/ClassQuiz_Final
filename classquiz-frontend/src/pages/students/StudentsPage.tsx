@@ -2,12 +2,13 @@ import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Search, Pencil, Trash2, Users, X, ChevronLeft, ChevronRight, FileSpreadsheet, Upload, AlertTriangle } from 'lucide-react'
-import { useStudents, useCreateStudent, useDeleteStudent, useImportCSV } from '@/hooks/useApi'
+import { useStudents, useCreateStudent, useUpdateStudent, useDeleteStudent, useImportCSV } from '@/hooks/useApi'
 import { LoadingPage, EmptyState, StatusBadge, PageHeader } from '@/components/shared'
 import { CLASS_LEVELS, CLASS_LEVEL_LABELS } from '@/constants/domain'
 import type { ClassLevel } from '@/constants/domain'
 import type { Student, CSVImportResult } from '@/types'
 
+// ── Add Student Modal ─────────────────────────────────────────────────────────
 function AddStudentModal({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState<{ name: string; code: string; classLevel: ClassLevel }>({ name: '', code: '', classLevel: '1ere' })
   const [error, setError] = useState('')
@@ -54,6 +55,87 @@ function AddStudentModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ── Edit Student Modal ────────────────────────────────────────────────────────
+function EditStudentModal({ student, onClose }: { student: Student; onClose: () => void }) {
+  const [form, setForm] = useState({
+    name: student.name,
+    code: student.code,
+    classLevel: student.classLevel as ClassLevel,
+  })
+  const [error, setError] = useState('')
+  const update = useUpdateStudent()
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); setError('')
+    try {
+      await update.mutateAsync({ id: student._id, name: form.name, code: form.code, classLevel: form.classLevel })
+      onClose()
+    } catch (err: any) { setError(err.response?.data?.message || 'Failed to update student') }
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="glass-card w-full max-w-md p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-base font-bold text-white">Edit Student</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/[0.07] text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">Full Name</label>
+            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="input-dark" required />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">Student Code</label>
+            <input value={form.code} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} className="input-dark font-mono" required />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">Class Level</label>
+            <select value={form.classLevel} onChange={e => setForm({ ...form, classLevel: e.target.value as ClassLevel })} className="input-dark">
+              {CLASS_LEVELS.map(cl => <option key={cl} value={cl}>{CLASS_LEVEL_LABELS[cl]}</option>)}
+            </select>
+          </div>
+          {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">{error}</p>}
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancel</button>
+            <button type="submit" disabled={update.isPending} className="btn-primary flex-1">{update.isPending ? 'Saving…' : 'Save Changes'}</button>
+          </div>
+        </form>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// ── Delete Confirmation Modal ─────────────────────────────────────────────────
+function DeleteConfirmModal({ student, onClose, onConfirm, isPending }: { student: Student; onClose: () => void; onConfirm: () => void; isPending: boolean }) {
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="glass-card w-full max-w-sm p-6 text-center">
+        <div className="w-12 h-12 rounded-full bg-red-500/15 flex items-center justify-center mx-auto mb-4">
+          <AlertTriangle className="w-6 h-6 text-red-400" />
+        </div>
+        <h3 className="text-base font-bold text-white mb-1">Delete Student?</h3>
+        <p className="text-xs text-slate-400 mb-5">
+          This will deactivate <span className="text-white font-semibold">{student.name}</span> ({student.code}).
+          This action can be undone by reactivating later.
+        </p>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="btn-ghost flex-1">Cancel</button>
+          <button onClick={onConfirm} disabled={isPending}
+            className="flex-1 px-4 py-2 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors disabled:opacity-50">
+            {isPending ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// ── CSV Import Modal ──────────────────────────────────────────────────────────
 function ImportCSVModal({ onClose }: { onClose: () => void }) {
   const [file, setFile] = useState<File | null>(null)
   const [result, setResult] = useState<CSVImportResult | null>(null)
@@ -73,51 +155,51 @@ function ImportCSVModal({ onClose }: { onClose: () => void }) {
       onClick={e => e.target === e.currentTarget && onClose()}>
       <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="glass-card w-full max-w-lg p-6">
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-base font-bold text-white flex items-center gap-2"><FileSpreadsheet className="w-4 h-4 text-teal-400" />Import Students from CSV</h3>
+          <h3 className="text-base font-bold text-white flex items-center gap-2"><FileSpreadsheet className="w-4 h-4 text-teal-400" />Import CSV</h3>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/[0.07] text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
         </div>
         <div className="mb-4 p-3 rounded-lg bg-sky-500/[0.06] border border-sky-500/15">
-          <p className="text-xs font-semibold text-sky-400 mb-1.5">CSV Format:</p>
-          <code className="text-[11px] text-slate-300 block font-mono leading-relaxed">name,studentCode,classLevel<br/>Ahmed Ben Ali,STU-2024-001,3eme</code>
-          <p className="text-[10px] text-slate-500 mt-1.5">Valid levels: {CLASS_LEVELS.join(', ')}</p>
+          <p className="text-xs font-semibold text-sky-400 mb-1">CSV Format:</p>
+          <code className="text-[11px] text-slate-300 block font-mono">name,studentCode,classLevel<br/>Ahmed Ben Ali,STU-2024-001,3eme</code>
         </div>
         <div onClick={() => fileRef.current?.click()} className={`drop-zone p-6 text-center cursor-pointer mb-4 ${file ? 'border-teal-500/40 bg-teal-500/[0.04]' : ''}`}>
           <Upload className="w-6 h-6 text-slate-500 mx-auto mb-2" />
-          {file ? <p className="text-xs text-teal-400 font-medium">{file.name}</p> : <p className="text-xs text-slate-400">Click to select CSV</p>}
+          {file ? <p className="text-xs text-teal-400">{file.name}</p> : <p className="text-xs text-slate-400">Click to select CSV</p>}
           <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={e => { setFile(e.target.files?.[0] ?? null); setResult(null); setError('') }} />
         </div>
-        {error && <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20"><p className="text-xs text-red-400">{error}</p></div>}
+        {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg mb-4">{error}</p>}
         {result && (
           <div className="mb-4 grid grid-cols-3 gap-2">
             <div className="p-2.5 rounded-lg bg-slate-800/50 text-center"><p className="text-lg font-bold text-white">{result.summary.totalRows}</p><p className="text-[10px] text-slate-500">Total</p></div>
-            <div className="p-2.5 rounded-lg bg-emerald-500/10 text-center"><p className="text-lg font-bold text-emerald-400">{result.summary.successCount}</p><p className="text-[10px] text-slate-500">Imported</p></div>
+            <div className="p-2.5 rounded-lg bg-emerald-500/10 text-center"><p className="text-lg font-bold text-emerald-400">{result.summary.successCount}</p><p className="text-[10px] text-slate-500">OK</p></div>
             <div className="p-2.5 rounded-lg bg-red-500/10 text-center"><p className="text-lg font-bold text-red-400">{result.summary.failedCount}</p><p className="text-[10px] text-slate-500">Failed</p></div>
           </div>
         )}
         <div className="flex gap-3">
-          <button type="button" onClick={onClose} className="btn-ghost flex-1">{result ? 'Close' : 'Cancel'}</button>
-          {!result && <button onClick={handleImport} disabled={!file || importCSV.isPending} className="btn-primary flex-1">{importCSV.isPending ? 'Importing…' : 'Import CSV'}</button>}
+          <button onClick={onClose} className="btn-ghost flex-1">{result ? 'Close' : 'Cancel'}</button>
+          {!result && <button onClick={handleImport} disabled={!file || importCSV.isPending} className="btn-primary flex-1">{importCSV.isPending ? 'Importing…' : 'Import'}</button>}
         </div>
       </motion.div>
     </motion.div>
   )
 }
 
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function StudentsPage() {
-  const [showModal, setShowModal] = useState(false)
+  const [showAddModal, setShowAddModal] = useState(false)
   const [showCSVModal, setShowCSVModal] = useState(false)
+  const [editStudent, setEditStudent] = useState<Student | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Student | null>(null)
   const [searchParams] = useSearchParams()
   const [search, setSearch] = useState(searchParams.get('search') || '')
   const [classFilter, setClassFilter] = useState<ClassLevel | undefined>()
   const [page, setPage] = useState(1)
 
-  // Sync URL search param
   useEffect(() => {
     const urlSearch = searchParams.get('search') || ''
     if (urlSearch && urlSearch !== search) setSearch(urlSearch)
   }, [searchParams])
 
-  // Fetch ALL students (large limit) for client-side filtering, OR use API search for full-text
   const { data, isLoading } = useStudents({ classLevel: classFilter, page, limit: 100 })
   const deleteStudent = useDeleteStudent()
 
@@ -126,13 +208,18 @@ export default function StudentsPage() {
   const allStudents = data?.students ?? []
   const pagination = data?.pagination
 
-  // Client-side search — instant filtering by name or code
   const students = search.trim()
     ? allStudents.filter(s =>
         s.name.toLowerCase().includes(search.toLowerCase()) ||
         s.code.toLowerCase().includes(search.toLowerCase())
       )
     : allStudents
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    await deleteStudent.mutateAsync(deleteTarget._id)
+    setDeleteTarget(null)
+  }
 
   return (
     <div className="space-y-5">
@@ -142,14 +229,13 @@ export default function StudentsPage() {
             <button onClick={() => setShowCSVModal(true)} className="btn-ghost flex items-center gap-2 text-teal-400 border-teal-500/20 hover:bg-teal-500/10">
               <FileSpreadsheet className="w-4 h-4" /> Import CSV
             </button>
-            <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2">
+            <button onClick={() => setShowAddModal(true)} className="btn-primary flex items-center gap-2">
               <Plus className="w-4 h-4" /> Add Student
             </button>
           </div>
         }
       />
 
-      {/* Class level filter pills */}
       <div className="flex gap-2 flex-wrap">
         <button onClick={() => { setClassFilter(undefined); setPage(1) }}
           className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${!classFilter ? 'bg-amber-500 text-white' : 'btn-ghost'}`}>
@@ -163,7 +249,6 @@ export default function StudentsPage() {
         ))}
       </div>
 
-      {/* Search + Table */}
       <div className="glass-card overflow-hidden">
         <div className="p-4 border-b border-white/[0.05] flex items-center gap-3">
           <div className="relative flex-1">
@@ -175,7 +260,7 @@ export default function StudentsPage() {
         </div>
 
         {students.length === 0
-          ? <EmptyState icon={Users} title="No students found" description={search ? `No results for "${search}"` : "Add your first student or adjust filters."} />
+          ? <EmptyState icon={Users} title="No students found" description={search ? `No results for "${search}"` : "Add your first student."} />
           : (
           <div className="overflow-x-auto">
             <table className="w-full table-dark">
@@ -195,8 +280,14 @@ export default function StudentsPage() {
                     <td className="text-slate-500 text-xs">{new Date(s.createdAt).toLocaleDateString()}</td>
                     <td>
                       <div className="flex items-center justify-end gap-1">
-                        <button className="p-1.5 rounded-lg hover:bg-white/[0.07] text-slate-400 hover:text-amber-400"><Pencil className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => deleteStudent.mutate(s._id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-slate-400 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => setEditStudent(s)}
+                          className="p-1.5 rounded-lg hover:bg-white/[0.07] text-slate-400 hover:text-amber-400 transition-colors">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => setDeleteTarget(s)}
+                          className="p-1.5 rounded-lg hover:bg-red-500/10 text-slate-400 hover:text-red-400 transition-colors">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </td>
                   </motion.tr>
@@ -218,8 +309,10 @@ export default function StudentsPage() {
       </div>
 
       <AnimatePresence>
-        {showModal && <AddStudentModal onClose={() => setShowModal(false)} />}
+        {showAddModal && <AddStudentModal onClose={() => setShowAddModal(false)} />}
         {showCSVModal && <ImportCSVModal onClose={() => setShowCSVModal(false)} />}
+        {editStudent && <EditStudentModal student={editStudent} onClose={() => setEditStudent(null)} />}
+        {deleteTarget && <DeleteConfirmModal student={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} isPending={deleteStudent.isPending} />}
       </AnimatePresence>
     </div>
   )
