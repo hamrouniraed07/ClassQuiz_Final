@@ -34,22 +34,10 @@ def _load_image(image_bytes: bytes) -> Image.Image:
 
 
 def _get_generation_config(temperature: float = 0.1, max_tokens: int = 8192) -> dict:
-    """
-    Build generation config dict.
-    For gemini-2.5 models, disable thinking to prevent token budget being consumed by internal reasoning.
-    """
-    config = {
+    return {
         "temperature": temperature,
         "max_output_tokens": max_tokens,
     }
-
-    # Gemini 2.5 models have "thinking" enabled by default which consumes tokens
-    # and can cause truncated outputs for structured JSON responses
-    model_name = settings.gemini_model.lower()
-    if "2.5" in model_name:
-        config["thinking_config"] = {"thinking_budget": 0}
-
-    return config
 
 
 def _extract_json(text: str) -> str:
