@@ -172,9 +172,12 @@ async def extract_student_answers(
         ensure_ascii=False,
     )
 
-    prompt = ANSWER_OCR_PROMPT_TEMPLATE.format(
-        num_questions=len(questions),
-        questions_json=questions_json,
+    # Use token replacement instead of str.format to avoid interpreting JSON
+    # braces in the prompt template as format placeholders.
+    prompt = (
+        ANSWER_OCR_PROMPT_TEMPLATE
+        .replace("{num_questions}", str(len(questions)))
+        .replace("{questions_json}", questions_json)
     )
 
     img = _load_image(student_exam_image)
