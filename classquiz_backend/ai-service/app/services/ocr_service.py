@@ -5,12 +5,11 @@ Handles both exam extraction and student answer extraction.
 
 import json
 import re
-import base64
 import structlog
-from pathlib import Path
 from typing import List, Optional
 
 import google.generativeai as genai
+from google.generativeai.types import GenerationConfig
 from PIL import Image
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 
@@ -34,22 +33,35 @@ def _load_image(image_bytes: bytes) -> Image.Image:
     return img
 
 
+def _get_generation_config(temperature: float = 0.1, max_tokens: int = 8192) -> dict:
+    """
+    Build generation config dict.
+    For gemini-2.5 models, disable thinking to prevent token budget being consumed by internal reasoning.
+    """
+    config = {
+        "temperature": temperature,
+        "max_output_tokens": max_tokens,
+    }
+
+    # Gemini 2.5 models have "thinking" enabled by default which consumes tokens
+    # and can cause truncated outputs for structured JSON responses
+    model_name = settings.gemini_model.lower()
+    if "2.5" in model_name:
+        config["thinking_config"] = {"thinking_budget": 0}
+
+    return config
+
+
 def _extract_json(text: str) -> str:
     """
     Robustly extract valid JSON from Gemini response.
-    Handles all known quirks:
-    - Markdown ```json fences
-    - Leading/trailing whitespace and newlines
-    - Missing opening/closing braces
-    - Gemini 2.5 "thinking" prefix before JSON
-    - Truncated responses
     """
     if not text or not text.strip():
         raise ValueError("Empty response from Gemini")
 
     text = text.strip()
 
-    # 1. Remove markdown code fences
+    # Remove markdown code fences
     if text.startswith("```json"):
         text = text[7:]
     elif text.startswith("```"):
@@ -58,49 +70,46 @@ def _extract_json(text: str) -> str:
         text = text[:-3]
     text = text.strip()
 
-    # 2. Try direct parse first (fast path)
+    # Try direct parse first
     try:
-        return json.dumps(json.loads(text))  # roundtrip validates
+        json.loads(text)
+        return text
     except json.JSONDecodeError:
         pass
 
-    # 3. Find JSON object using regex — look for { ... }
+    # Find JSON object using regex
     match = re.search(r'\{[\s\S]*\}', text)
     if match:
         candidate = match.group(0)
         try:
-            return json.dumps(json.loads(candidate))
+            json.loads(candidate)
+            return candidate
         except json.JSONDecodeError:
             pass
 
-    # 4. If text contains JSON keys but missing braces, wrap it
+    # If text contains JSON keys but missing braces
     if '"answers"' in text or '"questions"' in text:
-        # Find first quote that starts a key
         first_quote = text.find('"')
         if first_quote >= 0:
             wrapped = '{' + text[first_quote:]
-            # Ensure it ends with }
             if not wrapped.rstrip().endswith('}'):
-                wrapped = wrapped.rstrip()
-                # Try adding closing brackets
                 open_braces = wrapped.count('{') - wrapped.count('}')
                 open_brackets = wrapped.count('[') - wrapped.count(']')
                 wrapped += ']' * max(0, open_brackets)
                 wrapped += '}' * max(0, open_braces)
             try:
-                return json.dumps(json.loads(wrapped))
+                json.loads(wrapped)
+                return wrapped
             except json.JSONDecodeError:
                 pass
 
-    # 5. Nothing worked — raise with preview for debugging
-    preview = text[:200] if len(text) > 200 else text
+    preview = text[:300] if len(text) > 300 else text
     raise json.JSONDecodeError(
-        f"Could not extract valid JSON from Gemini response. Preview: {preview}",
+        f"Could not extract valid JSON. Response preview: {preview}",
         text, 0
     )
 
 
-# Retry on ANY exception — Gemini can return truncated, empty, or malformed responses
 @retry(
     stop=stop_after_attempt(settings.ocr_max_retries),
     wait=wait_fixed(settings.ocr_retry_wait_seconds),
@@ -111,9 +120,7 @@ async def extract_exam_questions(
     corrected_images: List[bytes],
     blank_images: Optional[List[bytes]] = None,
 ) -> ExamOCRResponse:
-    """
-    Extract structured questions and correct answers from corrected exam images.
-    """
+    """Extract structured questions and correct answers from corrected exam images."""
     logger.info("Starting exam OCR extraction", image_count=len(corrected_images))
 
     model = genai.GenerativeModel(settings.gemini_model)
@@ -132,12 +139,11 @@ async def extract_exam_questions(
             parts.append(f"[Blank exam page {i + 1}]")
             parts.append(img)
 
+    gen_config = _get_generation_config(temperature=0.1, max_tokens=8192)
+
     response = model.generate_content(
         parts,
-        generation_config=genai.GenerationConfig(
-            temperature=0.1,
-            max_output_tokens=4096,
-        ),
+        generation_config=gen_config,
     )
 
     raw_text = response.text
@@ -166,9 +172,7 @@ async def extract_student_answers(
     student_exam_image: bytes,
     questions: List[dict],
 ) -> AnswerOCRResponse:
-    """
-    Extract student's handwritten answers from their exam image.
-    """
+    """Extract student's handwritten answers from their exam image."""
     logger.info("Starting student answer OCR", question_count=len(questions))
 
     model = genai.GenerativeModel(settings.gemini_model)
@@ -187,12 +191,11 @@ async def extract_student_answers(
 
     img = _load_image(student_exam_image)
 
+    gen_config = _get_generation_config(temperature=0.05, max_tokens=8192)
+
     response = model.generate_content(
         [prompt, img],
-        generation_config=genai.GenerationConfig(
-            temperature=0.05,
-            max_output_tokens=4096,
-        ),
+        generation_config=gen_config,
     )
 
     raw_text = response.text
