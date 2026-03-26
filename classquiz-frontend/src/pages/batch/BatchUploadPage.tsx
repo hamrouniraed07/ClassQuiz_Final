@@ -5,7 +5,7 @@ import {
   Upload, CheckCircle, ChevronRight, ChevronLeft, Play, FileImage,
   AlertCircle, Loader2, XCircle, RotateCw, Plus, Eye, Users, ArrowLeft
 } from 'lucide-react'
-import { useExams, useStudents, useBatchUpload, useStudentExams } from '@/hooks/useApi'
+import { useExams, useStudents, useBatchUpload, useStudentExams, useStudentExam } from '@/hooks/useApi'
 import { PageHeader, StatusBadge } from '@/components/shared'
 import { CLASS_LEVEL_LABELS } from '@/constants/domain'
 import type { ClassLevel } from '@/constants/domain'
@@ -42,11 +42,16 @@ function StatusDot({ status }: { status: string }) {
   )
 }
 
+function canViewOCR(status: string) {
+  return ['ocr_done', 'validation_pending', 'validated', 'evaluating', 'evaluated', 'report_ready'].includes(status)
+}
+
 // ── Pipeline Row ──────────────────────────────────────────────────────────────
-function PipelineRow({ fileName, studentName, status, index }: {
-  fileName: string; studentName: string; status: string; index: number
+function PipelineRow({ fileName, studentName, status, index, onViewOCR }: {
+  fileName: string; studentName: string; status: string; index: number; onViewOCR: () => void
 }) {
   const { percent, stage, color, bar } = getPipelineProgress(status)
+  const viewEnabled = canViewOCR(status)
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
@@ -79,6 +84,16 @@ function PipelineRow({ fileName, studentName, status, index }: {
         <StatusDot status={status} />
         <span className={`text-xs font-semibold ${color}`}>{stage}</span>
       </div>
+      <div className="w-20 flex-shrink-0 flex justify-end">
+        <button
+          onClick={onViewOCR}
+          disabled={!viewEnabled}
+          className="btn-ghost text-xs px-2 py-1 h-auto inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+          title={viewEnabled ? 'View OCR result' : 'OCR result is not ready yet'}
+        >
+          <Eye className="w-3.5 h-3.5" /> View
+        </button>
+      </div>
     </motion.div>
   )
 }
@@ -95,11 +110,90 @@ function PipelineLegend() {
   )
 }
 
+function OCRResultModal({ studentExamId, onClose }: { studentExamId: string; onClose: () => void }) {
+  const { data: studentExam, isLoading } = useStudentExam(studentExamId)
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96, y: 10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.96, y: 10 }}
+          transition={{ duration: 0.2 }}
+          className="glass-card w-full max-w-3xl max-h-[85vh] overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.08]">
+            <div>
+              <h3 className="text-sm font-bold text-white">OCR Result</h3>
+              {studentExam && (
+                <p className="text-xs text-slate-400">
+                  Confidence: {studentExam.ocrConfidenceAvg ?? '-'}% · Status: {studentExam.status}
+                </p>
+              )}
+            </div>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/[0.07] text-slate-400 hover:text-white">
+              <XCircle className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="p-5 max-h-[calc(85vh-72px)] overflow-y-auto">
+            {isLoading && (
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading OCR results...
+              </div>
+            )}
+
+            {!isLoading && studentExam?.processingError && (
+              <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg mb-3">
+                {studentExam.processingError}
+              </div>
+            )}
+
+            {!isLoading && (!studentExam?.answers || studentExam.answers.length === 0) && (
+              <p className="text-xs text-slate-400">No OCR answers available for this submission yet.</p>
+            )}
+
+            {!isLoading && studentExam?.answers && studentExam.answers.length > 0 && (
+              <div className="space-y-2">
+                {studentExam.answers
+                  .slice()
+                  .sort((a, b) => a.questionNumber - b.questionNumber)
+                  .map((a) => (
+                    <div key={a.questionNumber} className="p-3 rounded-xl border border-white/[0.06] bg-white/[0.02]">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-semibold text-white">Q{a.questionNumber}</span>
+                        <span className="text-[10px] text-slate-400">
+                          Confidence: {a.confidenceScore ?? '-'}%
+                        </span>
+                      </div>
+                      <p className="text-xs font-mono text-slate-300 whitespace-pre-wrap break-words">
+                        {a.correctedText || a.extractedText || 'empty'}
+                      </p>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
 // ── Exam Dashboard (shows pipeline + option to upload more) ───────────────────
 function ExamDashboard({ examId, examTitle, onBack }: {
   examId: string; examTitle: string; onBack: () => void
 }) {
   const [showUpload, setShowUpload] = useState(false)
+  const [selectedStudentExamId, setSelectedStudentExamId] = useState<string | null>(null)
   const { data: studentsData } = useStudents({ limit: 200 })
   const { data: seData, refetch } = useStudentExams({ examId })
   const batchUpload = useBatchUpload()
@@ -209,11 +303,21 @@ function ExamDashboard({ examId, examTitle, onBack }: {
             <div className="w-32">Student</div>
             <div className="flex-1">Pipeline</div>
             <div className="w-28 text-right">Status</div>
+            <div className="w-20 text-right">OCR</div>
           </div>
           {studentExams.map((se: any, i: number) => {
             const name = typeof se.student === 'object' ? se.student.name : 'Unknown'
             const fileName = se.examImageOriginalName || `exam_${i + 1}.jpg`
-            return <PipelineRow key={se._id} fileName={fileName} studentName={name} status={se.status} index={i} />
+            return (
+              <PipelineRow
+                key={se._id}
+                fileName={fileName}
+                studentName={name}
+                status={se.status}
+                index={i}
+                onViewOCR={() => setSelectedStudentExamId(se._id)}
+              />
+            )
           })}
         </div>
       ) : !showUpload ? (
@@ -303,6 +407,13 @@ function ExamDashboard({ examId, examTitle, onBack }: {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {selectedStudentExamId && (
+        <OCRResultModal
+          studentExamId={selectedStudentExamId}
+          onClose={() => setSelectedStudentExamId(null)}
+        />
+      )}
     </div>
   )
 }
