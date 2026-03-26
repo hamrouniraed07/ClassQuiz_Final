@@ -1,9 +1,10 @@
 """
-Gemini 2.0 Vision OCR Service
+Gemini Vision OCR Service
 Handles both exam extraction and student answer extraction.
 """
 
 import json
+import re
 import base64
 import structlog
 from pathlib import Path
@@ -33,22 +34,77 @@ def _load_image(image_bytes: bytes) -> Image.Image:
     return img
 
 
-def _strip_json_fences(text: str) -> str:
-    """Remove ```json ... ``` fences if Gemini wraps response in them."""
+def _extract_json(text: str) -> str:
+    """
+    Robustly extract valid JSON from Gemini response.
+    Handles all known quirks:
+    - Markdown ```json fences
+    - Leading/trailing whitespace and newlines
+    - Missing opening/closing braces
+    - Gemini 2.5 "thinking" prefix before JSON
+    - Truncated responses
+    """
+    if not text or not text.strip():
+        raise ValueError("Empty response from Gemini")
+
     text = text.strip()
+
+    # 1. Remove markdown code fences
     if text.startswith("```json"):
         text = text[7:]
     elif text.startswith("```"):
         text = text[3:]
     if text.endswith("```"):
         text = text[:-3]
-    return text.strip()
+    text = text.strip()
+
+    # 2. Try direct parse first (fast path)
+    try:
+        return json.dumps(json.loads(text))  # roundtrip validates
+    except json.JSONDecodeError:
+        pass
+
+    # 3. Find JSON object using regex — look for { ... }
+    match = re.search(r'\{[\s\S]*\}', text)
+    if match:
+        candidate = match.group(0)
+        try:
+            return json.dumps(json.loads(candidate))
+        except json.JSONDecodeError:
+            pass
+
+    # 4. If text contains JSON keys but missing braces, wrap it
+    if '"answers"' in text or '"questions"' in text:
+        # Find first quote that starts a key
+        first_quote = text.find('"')
+        if first_quote >= 0:
+            wrapped = '{' + text[first_quote:]
+            # Ensure it ends with }
+            if not wrapped.rstrip().endswith('}'):
+                wrapped = wrapped.rstrip()
+                # Try adding closing brackets
+                open_braces = wrapped.count('{') - wrapped.count('}')
+                open_brackets = wrapped.count('[') - wrapped.count(']')
+                wrapped += ']' * max(0, open_brackets)
+                wrapped += '}' * max(0, open_braces)
+            try:
+                return json.dumps(json.loads(wrapped))
+            except json.JSONDecodeError:
+                pass
+
+    # 5. Nothing worked — raise with preview for debugging
+    preview = text[:200] if len(text) > 200 else text
+    raise json.JSONDecodeError(
+        f"Could not extract valid JSON from Gemini response. Preview: {preview}",
+        text, 0
+    )
 
 
+# Retry on ANY exception — Gemini can return truncated, empty, or malformed responses
 @retry(
     stop=stop_after_attempt(settings.ocr_max_retries),
     wait=wait_fixed(settings.ocr_retry_wait_seconds),
-    retry=retry_if_exception_type((json.JSONDecodeError, KeyError, ValueError)),
+    retry=retry_if_exception_type(Exception),
     reraise=True,
 )
 async def extract_exam_questions(
@@ -57,21 +113,12 @@ async def extract_exam_questions(
 ) -> ExamOCRResponse:
     """
     Extract structured questions and correct answers from corrected exam images.
-
-    Args:
-        corrected_images: List of corrected exam image bytes
-        blank_images: Optional list of blank exam image bytes (improves context)
-
-    Returns:
-        ExamOCRResponse with questions and total score
     """
     logger.info("Starting exam OCR extraction", image_count=len(corrected_images))
 
     model = genai.GenerativeModel(settings.gemini_model)
 
-    # Build content parts
     parts = [EXAM_OCR_PROMPT]
-
     parts.append("\n\n## CORRECTED EXAM IMAGES:\n")
     for i, img_bytes in enumerate(corrected_images):
         img = _load_image(img_bytes)
@@ -88,18 +135,17 @@ async def extract_exam_questions(
     response = model.generate_content(
         parts,
         generation_config=genai.GenerationConfig(
-            temperature=0.1,  # Low temperature for factual extraction
+            temperature=0.1,
             max_output_tokens=4096,
         ),
     )
 
     raw_text = response.text
-    logger.debug("Gemini exam OCR raw response", length=len(raw_text))
+    logger.info("Gemini exam OCR raw response", length=len(raw_text), preview=raw_text[:200])
 
-    clean_json = _strip_json_fences(raw_text)
+    clean_json = _extract_json(raw_text)
     data = json.loads(clean_json)
 
-    # Validate and return
     result = ExamOCRResponse(**data)
     logger.info(
         "Exam OCR completed",
@@ -113,7 +159,7 @@ async def extract_exam_questions(
 @retry(
     stop=stop_after_attempt(settings.ocr_max_retries),
     wait=wait_fixed(settings.ocr_retry_wait_seconds),
-    retry=retry_if_exception_type((json.JSONDecodeError, KeyError, ValueError)),
+    retry=retry_if_exception_type(Exception),
     reraise=True,
 )
 async def extract_student_answers(
@@ -122,23 +168,16 @@ async def extract_student_answers(
 ) -> AnswerOCRResponse:
     """
     Extract student's handwritten answers from their exam image.
-
-    Args:
-        student_exam_image: Student exam image bytes
-        questions: List of question dicts (number, text, max_score, type)
-
-    Returns:
-        AnswerOCRResponse with extracted answers and confidence scores
     """
     logger.info("Starting student answer OCR", question_count=len(questions))
 
     model = genai.GenerativeModel(settings.gemini_model)
 
-    # Format questions for the prompt
     questions_json = json.dumps(
         [{"number": q["number"], "text": q["text"], "type": q.get("type", "short_answer")}
          for q in questions],
         indent=2,
+        ensure_ascii=False,
     )
 
     prompt = ANSWER_OCR_PROMPT_TEMPLATE.format(
@@ -151,15 +190,15 @@ async def extract_student_answers(
     response = model.generate_content(
         [prompt, img],
         generation_config=genai.GenerationConfig(
-            temperature=0.05,  # Very low — we want faithful extraction, not creativity
+            temperature=0.05,
             max_output_tokens=4096,
         ),
     )
 
     raw_text = response.text
-    logger.debug("Gemini answer OCR raw response", length=len(raw_text))
+    logger.info("Gemini answer OCR raw response", length=len(raw_text), preview=raw_text[:300])
 
-    clean_json = _strip_json_fences(raw_text)
+    clean_json = _extract_json(raw_text)
     data = json.loads(clean_json)
 
     result = AnswerOCRResponse(**data)
