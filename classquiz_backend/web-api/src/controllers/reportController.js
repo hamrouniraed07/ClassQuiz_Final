@@ -24,33 +24,52 @@ if (!fs.existsSync(REPORTS_DIR)) fs.mkdirSync(REPORTS_DIR, { recursive: true });
  * POST /api/reports/generate/:studentExamId
  */
 const generateReport = async (req, res) => {
-  const studentExam = await StudentExam.findById(req.params.studentExamId)
-    .populate('student')
-    .populate('exam');
-
-  if (!studentExam) return notFound(res, 'Student exam not found');
-  if (studentExam.status !== 'evaluated') {
-    return badRequest(res, `Cannot generate report for exam in status: ${studentExam.status}`);
-  }
-
   try {
-    const filePath = await buildPDF(studentExam);
-
-    await StudentExam.findByIdAndUpdate(studentExam._id, {
-      reportPath: filePath,
-      reportGeneratedAt: new Date(),
-      status: 'report_ready',
-    });
+    const output = await generateReportForStudentExam(req.params.studentExamId);
 
     return success(res, {
-      reportPath: `/reports/${path.basename(filePath)}`,
+      reportPath: `/reports/${path.basename(output.filePath)}`,
       generatedAt: new Date(),
     }, 'Report generated');
   } catch (err) {
+    if (err.code === 'NOT_FOUND') return notFound(res, err.message);
+    if (err.code === 'BAD_STATUS') return badRequest(res, err.message);
     logger.error('PDF generation error:', err);
     return error(res, 'Failed to generate PDF report');
   }
 };
+
+/**
+ * Internal helper for generating pedagogical report after evaluation.
+ */
+async function generateReportForStudentExam(studentExamId) {
+  const studentExam = await StudentExam.findById(studentExamId)
+    .populate('student')
+    .populate('exam');
+
+  if (!studentExam) {
+    const e = new Error('Student exam not found');
+    e.code = 'NOT_FOUND';
+    throw e;
+  }
+
+  if (studentExam.status !== 'evaluated') {
+    const e = new Error(`Cannot generate report for exam in status: ${studentExam.status}`);
+    e.code = 'BAD_STATUS';
+    throw e;
+  }
+
+  const filePath = await buildPDF(studentExam);
+
+  await StudentExam.findByIdAndUpdate(studentExam._id, {
+    reportPath: filePath,
+    reportGeneratedAt: new Date(),
+    status: 'report_ready',
+    processingError: null,
+  });
+
+  return { studentExamId: studentExam._id, filePath };
+}
 
 /**
  * GET /api/reports/download/:studentExamId
@@ -251,4 +270,4 @@ async function buildPDF(studentExam) {
   });
 }
 
-module.exports = { generateReport, downloadReport, getExamReport };
+module.exports = { generateReport, downloadReport, getExamReport, generateReportForStudentExam };

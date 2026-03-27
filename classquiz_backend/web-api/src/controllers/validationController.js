@@ -1,5 +1,6 @@
 const Validation = require('../models/Validation');
 const StudentExam = require('../models/StudentExam');
+const { runEvaluationAndReport } = require('./studentExamController');
 const { success, notFound, badRequest } = require('../utils/response');
 const logger = require('../utils/logger');
 
@@ -95,7 +96,12 @@ const submitReview = async (req, res) => {
   await StudentExam.findByIdAndUpdate(studentExam._id, {
     answers: updatedAnswers,
     status: 'validated',
+    processingError: null,
   });
+
+  runEvaluationAndReport(studentExam._id).catch((err) =>
+    logger.error(`Auto pipeline failed after validation for studentExam ${studentExam._id}:`, err)
+  );
 
   logger.info(
     `Validation ${validation._id} completed by ${req.user.username}: ${corrections.length} corrections applied`
@@ -119,7 +125,12 @@ const skipValidation = async (req, res) => {
 
   await StudentExam.findByIdAndUpdate(validation.studentExam, {
     status: 'validated',
+    processingError: null,
   });
+
+  runEvaluationAndReport(validation.studentExam).catch((err) =>
+    logger.error(`Auto pipeline failed after skip for studentExam ${validation.studentExam}:`, err)
+  );
 
   return success(res, null, 'Validation skipped. Exam marked as validated.');
 };

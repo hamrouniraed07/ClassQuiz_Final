@@ -4,6 +4,7 @@ const Exam = require('../models/Exam');
 const Validation = require('../models/Validation');
 const BatchUpload = require('../models/BatchUpload');
 const { sendFormData, sendJSON } = require('../utils/aiClient');
+const { generateReportForStudentExam } = require('./reportController');
 const { success, created, notFound, badRequest, error } = require('../utils/response');
 const FormData = require('form-data');
 const fs = require('fs');
@@ -89,6 +90,7 @@ async function processStudentExamOCR(studentExam, exam) {
       requiresValidation,
       status,
       ocrCompletedAt: new Date(),
+      processingError: null,
     });
 
     // Create validation record if needed
@@ -111,6 +113,12 @@ async function processStudentExamOCR(studentExam, exam) {
 
       logger.info(
         `Validation created for studentExam ${studentExam._id}: ${flaggedAnswers.length} flagged answers`
+      );
+    }
+
+    if (!requiresValidation) {
+      runEvaluationAndReport(studentExam._id).catch((err) =>
+        logger.error(`Auto pipeline failed for studentExam ${studentExam._id}:`, err)
       );
     }
 
@@ -137,14 +145,39 @@ const evaluateStudentExam = async (req, res) => {
     return badRequest(res, `Cannot evaluate exam in status: ${studentExam.status}`);
   }
 
-  await StudentExam.findByIdAndUpdate(studentExam._id, { status: 'evaluating' });
-
-  evaluateWithAI(studentExam).catch((err) =>
+  runEvaluationAndReport(studentExam._id).catch((err) =>
     logger.error(`Evaluation failed for studentExam ${studentExam._id}:`, err)
   );
 
   return success(res, null, 'Evaluation started');
 };
+
+async function runEvaluationAndReport(studentExamId) {
+  const current = await StudentExam.findById(studentExamId).populate('exam').populate('student');
+  if (!current) throw new Error('Student exam not found');
+
+  const allowedStatuses = ['ocr_done', 'validated'];
+  if (!allowedStatuses.includes(current.status)) {
+    throw new Error(`Cannot auto-evaluate exam in status: ${current.status}`);
+  }
+
+  await StudentExam.findByIdAndUpdate(studentExamId, {
+    status: 'evaluating',
+    processingError: null,
+  });
+
+  await evaluateWithAI(current);
+
+  try {
+    await generateReportForStudentExam(studentExamId);
+    logger.info(`Auto report generated for studentExam ${studentExamId}`);
+  } catch (err) {
+    await StudentExam.findByIdAndUpdate(studentExamId, {
+      processingError: `Report generation failed: ${err.message}`,
+    });
+    logger.warn(`Auto report generation failed for studentExam ${studentExamId}: ${err.message}`);
+  }
+}
 
 /**
  * Core evaluation flow
@@ -206,9 +239,12 @@ async function evaluateWithAI(studentExam) {
       `Evaluation completed for studentExam ${studentExam._id}: ${totalScore}/${studentExam.maxPossibleScore} (${percentage}%)`
     );
   } catch (err) {
+    // Keep the item in its post-OCR state so OCR results remain accessible,
+    // even when grading/report steps fail (e.g., external API key issues).
+    const fallbackStatus = studentExam.status === 'validated' ? 'validated' : 'ocr_done';
     await StudentExam.findByIdAndUpdate(studentExam._id, {
-      status: 'failed',
-      processingError: err.message,
+      status: fallbackStatus,
+      processingError: `Evaluation failed: ${err.message}`,
     });
     throw err;
   }
