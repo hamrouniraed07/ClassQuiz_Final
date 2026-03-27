@@ -6,7 +6,7 @@ import { useLogin } from '@/hooks/useApi'
 import { useAuthStore } from '@/store/authStore'
 
 const features = [
-  { icon: BookOpen, label: 'AI-Powered OCR', desc: 'Gemini 2.0 reads handwritten answers' },
+  { icon: BookOpen, label: 'AI-Powered OCR', desc: 'Gemini 2.5 reads handwritten answers' },
   { icon: Users,    label: 'Batch Processing', desc: 'Grade entire classes at once' },
   { icon: BarChart3,label: 'Instant Reports', desc: 'Detailed performance analytics' },
 ]
