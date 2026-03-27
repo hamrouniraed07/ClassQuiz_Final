@@ -58,6 +58,12 @@ app.use(
   express.static(path.join(process.env.UPLOAD_DIR || './uploads', 'reports'))
 );
 
+// Serve uploaded exam images for validation/review screens
+app.use(
+  '/api/uploads',
+  express.static(path.join(process.env.UPLOAD_DIR || './uploads'))
+);
+
 // ── Health Check ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({

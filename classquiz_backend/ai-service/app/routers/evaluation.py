@@ -13,6 +13,19 @@ router = APIRouter(prefix="/evaluate", tags=["Evaluation"])
 logger = structlog.get_logger()
 
 
+def _friendly_evaluation_error(exc: Exception) -> str:
+    msg = str(exc)
+    lower_msg = msg.lower()
+
+    if "insufficient_quota" in lower_msg or "exceeded your current quota" in lower_msg:
+        return "Evaluation unavailable: OpenAI quota exceeded. Please update billing/quota and retry."
+
+    if "invalid_api_key" in lower_msg or "incorrect api key" in lower_msg:
+        return "Evaluation unavailable: OpenAI API key is invalid. Please update OPENAI_API_KEY and retry."
+
+    return "Evaluation processing failed. Please retry in a moment."
+
+
 @router.post(
     "/grade",
     response_model=GradeResponse,
@@ -63,12 +76,14 @@ async def grade_exam(request: GradeRequest):
         )
         return result
     except Exception as e:
+        friendly_message = _friendly_evaluation_error(e)
         logger.error(
             "Evaluation failed",
             student_exam_id=request.student_exam_id,
             error=str(e),
+            friendly_error=friendly_message,
         )
         raise HTTPException(
             status_code=500,
-            detail=f"Evaluation processing failed: {str(e)}",
+            detail=friendly_message,
         )

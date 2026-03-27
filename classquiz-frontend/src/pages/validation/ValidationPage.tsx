@@ -19,6 +19,20 @@ const SUBJECT_LIST = SUBJECTS.map(key => ({
   emoji: SUBJECT_META[key].emoji,
 }))
 
+function buildStudentExamImageUrl(imagePath?: string | null) {
+  if (!imagePath) return ''
+
+  const normalized = imagePath.replace(/\\/g, '/')
+  const relativePath = normalized
+    // Handle absolute container paths like /app/uploads/student-exams/file.png
+    .replace(/^.*\/uploads\//, '')
+    // Handle relative paths like uploads/student-exams/file.png or ./uploads/...
+    .replace(/^(\.\/)?uploads\//, '')
+    .replace(/^\/+/, '')
+
+  return `/api/uploads/${relativePath}`
+}
+
 // ── Subject Card ──────────────────────────────────────────────────────────────
 function SubjectCard({ subject, count, onClick, delay }: {
   subject: typeof SUBJECT_LIST[0]; count: number; onClick: () => void; delay: number
@@ -122,7 +136,7 @@ function ReviewPanel({ validationId, onNext, onBack }: {
           </div>
           <div className="aspect-[3/4] rounded-lg bg-navy-950 border border-white/[0.05] flex items-center justify-center overflow-hidden">
             <img
-              src={`/api/uploads/${validation.studentExam.examImagePath}`}
+              src={buildStudentExamImageUrl(validation.studentExam?.examImagePath)}
               alt="Student exam"
               className="w-full h-full object-contain"
             />
