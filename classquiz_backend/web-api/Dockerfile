@@ -10,6 +10,9 @@ RUN npm ci --omit=dev && npm cache clean --force
 # ── Stage 2: Production Image ─────────────────────────────────────────────────
 FROM node:20-alpine AS production
 
+# Install Unicode fonts (Arabic support for PDF rendering)
+RUN apk add --no-cache ttf-dejavu
+
 # Security: run as non-root user
 RUN addgroup -g 1001 -S nodejs && adduser -S nodeuser -u 1001
 

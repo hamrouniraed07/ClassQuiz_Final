@@ -44,6 +44,33 @@ export type MistakeType = 'correct' | 'partial' | 'conceptual_error' | 'calculat
 export interface Answer { questionNumber: number; extractedText: string; correctedText?: string; confidenceScore?: number; score?: number; maxScore: number; feedback?: string; mistakeType?: MistakeType; evaluatedAt?: string }
 export interface StudentExam { _id: string; student: Student | string; exam: Exam | string; examImagePath: string; answers: Answer[]; status: StudentExamStatus; totalScore?: number; maxPossibleScore?: number; percentage?: number; grade?: string; ocrConfidenceAvg?: number; requiresValidation?: boolean; reportPath?: string; reportGeneratedAt?: string; processingError?: string; evaluatedAt?: string; createdAt: string }
 
+export interface ReportStudentExam {
+  _id: string
+  student: Pick<Student, '_id' | 'name' | 'code' | 'classLevel'>
+  status: StudentExamStatus
+  totalScore?: number
+  maxPossibleScore?: number
+  percentage?: number
+  grade?: string
+  reportPath?: string | null
+  reportGeneratedAt?: string | null
+}
+
+export interface ExamReportSummary {
+  totalStudents: number
+  averagePercentage: number
+  highestScore: number
+  lowestScore: number
+  passRate: number
+  gradeDistribution: Record<string, number>
+}
+
+export interface ExamReportData {
+  exam: Pick<Exam, '_id' | 'title' | 'subject' | 'classLevel'>
+  summary: ExamReportSummary | null
+  students: ReportStudentExam[]
+}
+
 export type ValidationStatus = 'pending' | 'in_review' | 'completed' | 'skipped'
 export interface FlaggedAnswer { questionNumber: number; extractedText: string; confidenceScore: number }
 export interface Correction { questionNumber: number; correctedText: string }

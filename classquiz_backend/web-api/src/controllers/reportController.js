@@ -5,7 +5,6 @@ const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
 const { success, notFound, badRequest, error } = require('../utils/response');
-const { CLASS_LEVELS } = require('../utils/constants');
 const logger = require('../utils/logger');
 
 const CLASS_LEVEL_LABELS = {
@@ -19,6 +18,46 @@ const CLASS_LEVEL_LABELS = {
 
 const REPORTS_DIR = path.join(process.env.UPLOAD_DIR || './uploads', 'reports');
 if (!fs.existsSync(REPORTS_DIR)) fs.mkdirSync(REPORTS_DIR, { recursive: true });
+
+const ARABIC_FONT_CANDIDATES = [
+  '/usr/share/fonts/dejavu/DejaVuSans.ttf',
+  '/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf',
+  '/usr/share/fonts/TTF/DejaVuSans.ttf',
+  '/usr/share/fonts/TTF/DejaVuSans-Bold.ttf',
+  '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+];
+
+const ARABIC_FONT_PATH = ARABIC_FONT_CANDIDATES.find((p) => fs.existsSync(p)) || null;
+
+function containsArabic(text) {
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(String(text || ''));
+}
+
+function applyFont(doc, text, latinFont = 'Helvetica') {
+  if (ARABIC_FONT_PATH && containsArabic(text)) {
+    doc.font(ARABIC_FONT_PATH);
+  } else {
+    doc.font(latinFont);
+  }
+}
+
+function toSafeAsciiFilename(name) {
+  const normalized = name
+    .normalize('NFKD')
+    .replace(/[^\x20-\x7E]/g, '')
+    .replace(/["\\]/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/[^A-Za-z0-9._-]/g, '_')
+    .replace(/_+/g, '_');
+
+  return normalized || 'ClassQuiz_Report.pdf';
+}
+
+function encodeRFC5987Value(value) {
+  return encodeURIComponent(value)
+    .replace(/['()]/g, escape)
+    .replace(/\*/g, '%2A');
+}
 
 /**
  * POST /api/reports/generate/:studentExamId
@@ -53,7 +92,7 @@ async function generateReportForStudentExam(studentExamId) {
     throw e;
   }
 
-  if (studentExam.status !== 'evaluated') {
+  if (!['evaluated', 'report_ready'].includes(studentExam.status)) {
     const e = new Error(`Cannot generate report for exam in status: ${studentExam.status}`);
     e.code = 'BAD_STATUS';
     throw e;
@@ -80,18 +119,37 @@ const downloadReport = async (req, res) => {
     .populate('exam');
 
   if (!studentExam) return notFound(res, 'Student exam not found');
-  if (!studentExam.reportPath) return badRequest(res, 'Report not yet generated');
 
-  if (!fs.existsSync(studentExam.reportPath)) {
+  if (!['evaluated', 'report_ready'].includes(studentExam.status)) {
+    return badRequest(res, `Cannot download report for exam in status: ${studentExam.status}`);
+  }
+
+  // Always rebuild report before download so fixes (e.g., Arabic font rendering)
+  // apply to previously generated files as well.
+  const refreshedPath = await buildPDF(studentExam);
+
+  await StudentExam.findByIdAndUpdate(studentExam._id, {
+    reportPath: refreshedPath,
+    reportGeneratedAt: new Date(),
+    status: 'report_ready',
+    processingError: null,
+  });
+
+  if (!fs.existsSync(refreshedPath)) {
     return error(res, 'Report file not found on disk. Please regenerate.', 404);
   }
 
-  const filename = `ClassQuiz_Report_${studentExam.student.code}_${studentExam.exam.subject}.pdf`
-    .replace(/\s+/g, '_');
+  const studentCode = studentExam.student?.code || 'student';
+  const subject = studentExam.exam?.subject || 'exam';
+  const utf8Filename = `ClassQuiz_Report_${studentCode}_${subject}.pdf`.replace(/\s+/g, '_');
+  const asciiFilename = toSafeAsciiFilename(utf8Filename);
 
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-  fs.createReadStream(studentExam.reportPath).pipe(res);
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodeRFC5987Value(utf8Filename)}`
+  );
+  fs.createReadStream(refreshedPath).pipe(res);
 };
 
 /**
@@ -106,7 +164,7 @@ const getExamReport = async (req, res) => {
     status: { $in: ['evaluated', 'report_ready'] },
   })
     .populate('student', 'name code classLevel')
-    .select('totalScore maxPossibleScore percentage grade student status');
+    .select('totalScore maxPossibleScore percentage grade student status reportPath reportGeneratedAt');
 
   if (!studentExams.length) {
     return success(res, { exam, summary: null, students: [] });
@@ -177,9 +235,11 @@ async function buildPDF(studentExam) {
       ['Date', new Date(studentExam.evaluatedAt).toLocaleDateString('en-US', { dateStyle: 'long' })],
     ];
 
-    doc.font('Helvetica').fontSize(10);
+    doc.fontSize(10);
     info.forEach(([label, value]) => {
-      doc.text(`${label}:  `, { continued: true }).fillColor('#333').text(value);
+      doc.font('Helvetica').text(`${label}:  `, { continued: true });
+      applyFont(doc, value, 'Helvetica');
+      doc.fillColor('#333').text(String(value));
       doc.fillColor('#000');
     });
 
@@ -210,22 +270,23 @@ async function buildPDF(studentExam) {
     studentExam.answers.forEach((answer) => {
       const questionData = exam.questions.find((q) => q.number === answer.questionNumber);
 
-      doc
-        .fillColor('#1a237e')
-        .font('Helvetica-Bold')
-        .fontSize(11)
-        .text(`Q${answer.questionNumber}: ${questionData?.text || 'Question text unavailable'}`)
-        .moveDown(0.2);
+      const questionText = questionData?.text || 'Question text unavailable';
+
+      doc.fillColor('#1a237e').font('Helvetica-Bold').fontSize(11).text(`Q${answer.questionNumber}: `, { continued: true });
+      applyFont(doc, questionText, 'Helvetica-Bold');
+      doc.text(String(questionText)).moveDown(0.2);
 
       doc.fillColor('#000').font('Helvetica').fontSize(10);
 
-      doc.text('Student Answer: ', { continued: true })
-        .fillColor('#424242')
-        .text(answer.correctedText || answer.extractedText || '(no answer)');
+      doc.text('Student Answer: ', { continued: true });
+      const studentAnswerText = answer.correctedText || answer.extractedText || '(no answer)';
+      applyFont(doc, studentAnswerText);
+      doc.fillColor('#424242').text(String(studentAnswerText));
 
-      doc.fillColor('#1b5e20').text('Correct Answer: ', { continued: true })
-        .fillColor('#424242')
-        .text(questionData?.correctAnswer || 'N/A');
+      doc.fillColor('#1b5e20').font('Helvetica').text('Correct Answer: ', { continued: true });
+      const correctAnswerText = questionData?.correctAnswer || 'N/A';
+      applyFont(doc, correctAnswerText);
+      doc.fillColor('#424242').text(String(correctAnswerText));
 
       doc.fillColor('#000').text('Score: ', { continued: true })
         .text(`${answer.score ?? '?'} / ${answer.maxScore}`);

@@ -5,12 +5,12 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   PieChart, Pie, Cell, Legend
 } from 'recharts'
-import { Download, FileText, TrendingUp, Users, Award, ChevronDown, BarChart3 } from 'lucide-react'
-import { useExams, useExamReport, useGenerateReport, useDownloadReport, useStudentExams } from '@/hooks/useApi'
+import { Download, Eye, FileText, TrendingUp, Users, Award, ChevronDown, BarChart3 } from 'lucide-react'
+import { useExams, useExamReport, useGenerateReport, useDownloadReport, usePreviewReport } from '@/hooks/useApi'
 import { LoadingPage, PageHeader, StatCard, SectionCard, GradeBadge, EmptyState } from '@/components/shared'
 import { CLASS_LEVEL_LABELS, SUBJECT_META } from '@/constants/domain'
-import type { ClassLevel, Subject } from '@/constants/domain'
-import type { Exam } from '@/types'
+import type { Subject } from '@/constants/domain'
+import type { ReportStudentExam } from '@/types'
 
 const GRADE_COLORS: Record<string, string> = {
   A: '#10b981', B: '#0ea5e9', C: '#f59e0b', D: '#f97316', F: '#ef4444'
@@ -68,15 +68,20 @@ function ExamSelector({ value, onChange }: { value: string; onChange: (id: strin
 }
 
 // ── Student Performance Row ───────────────────────────────────────────────────
-function StudentRow({ se, index, onDownload }: { se: any; index: number; onDownload: (id: string) => void }) {
+function StudentRow({ se, index, onPreview, onDownload, onGenerated }: { se: ReportStudentExam; index: number; onPreview: (id: string) => void; onDownload: (id: string) => void; onGenerated: () => void }) {
   const [generating, setGenerating] = useState(false)
   const generateReport = useGenerateReport()
+  const gradeColor = (se.grade && GRADE_COLORS[se.grade]) ? GRADE_COLORS[se.grade] : '#64748b'
 
   const handleGenerate = async () => {
     setGenerating(true)
     await generateReport.mutateAsync(se._id)
+    onGenerated()
+    onPreview(se._id)
     setGenerating(false)
   }
+
+  const noteOn20 = ((se.percentage ?? 0) / 100) * 20
 
   return (
     <motion.tr
@@ -87,7 +92,7 @@ function StudentRow({ se, index, onDownload }: { se: any; index: number; onDownl
       <td>
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white"
-            style={{ background: `linear-gradient(135deg, ${GRADE_COLORS[se.grade] ?? '#64748b'}30, ${GRADE_COLORS[se.grade] ?? '#64748b'}15)` }}>
+            style={{ background: `linear-gradient(135deg, ${gradeColor}30, ${gradeColor}15)` }}>
             {se.student.name?.[0] ?? '?'}
           </div>
           <div>
@@ -101,28 +106,42 @@ function StudentRow({ se, index, onDownload }: { se: any; index: number; onDownl
           <div className="flex-1 h-1.5 bg-navy-950 rounded-full overflow-hidden w-20">
             <motion.div
               className="h-full rounded-full"
-              style={{ backgroundColor: GRADE_COLORS[se.grade] ?? '#64748b' }}
+              style={{ backgroundColor: gradeColor }}
               initial={{ width: 0 }}
               animate={{ width: `${se.percentage ?? 0}%` }}
               transition={{ delay: index * 0.04 + 0.3, duration: 0.6 }}
             />
           </div>
-          <span className="text-xs font-bold" style={{ color: GRADE_COLORS[se.grade] ?? '#64748b' }}>
+          <span className="text-xs font-bold" style={{ color: gradeColor }}>
             {se.percentage?.toFixed(1)}%
           </span>
         </div>
       </td>
       <td className="font-semibold text-white text-xs">{se.totalScore} / {se.maxPossibleScore}</td>
+      <td className="font-semibold text-white text-xs">{noteOn20.toFixed(2)} / 20</td>
       <td><GradeBadge grade={se.grade} /></td>
       <td>
         <div className="flex items-center gap-1">
           {se.reportPath ? (
-            <button onClick={() => onDownload(se._id)}
-              className="p-1.5 rounded-lg hover:bg-teal-500/15 text-slate-400 hover:text-teal-400 transition-colors">
-              <Download className="w-3.5 h-3.5" />
-            </button>
+            <>
+              <button
+                onClick={() => onPreview(se._id)}
+                title="Open pedagogical report"
+                className="p-1.5 rounded-lg hover:bg-sky-500/15 text-slate-400 hover:text-sky-400 transition-colors"
+              >
+                <Eye className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => onDownload(se._id)}
+                title="Download report"
+                className="p-1.5 rounded-lg hover:bg-teal-500/15 text-slate-400 hover:text-teal-400 transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+              </button>
+            </>
           ) : (
             <button onClick={handleGenerate} disabled={generating}
+              title={generating ? 'Generating report...' : 'Generate and open report'}
               className="p-1.5 rounded-lg hover:bg-amber-500/15 text-slate-400 hover:text-amber-400 transition-colors">
               <FileText className="w-3.5 h-3.5" />
             </button>
@@ -136,17 +155,17 @@ function StudentRow({ se, index, onDownload }: { se: any; index: number; onDownl
 // ── Main Reports Page ─────────────────────────────────────────────────────────
 export default function ReportsPage() {
   const [examId, setExamId] = useState('')
-  const { data: reportData, isLoading: reportLoading } = useExamReport(examId)
-  const { data: studentExamsData } = useStudentExams({ examId: examId || undefined, status: 'evaluated', limit: 50 })
+  const { data: reportData, isLoading: reportLoading, refetch: refetchReport } = useExamReport(examId)
   const downloadReport = useDownloadReport()
+  const previewReport = usePreviewReport()
 
-  const studentExams = studentExamsData?.studentExams ?? []
+  const studentExams = reportData?.students ?? []
   const summary = reportData?.summary
   const exam = reportData?.exam
 
   // Build chart data
-  const scoreCompareData = studentExams.slice(0, 12).map(se => ({
-    name: typeof se.student === 'object' ? se.student.name.split(' ')[0] : '?',
+  const scoreCompareData = studentExams.slice(0, 12).map((se: ReportStudentExam) => ({
+    name: se.student.name.split(' ')[0] || '?',
     score: se.percentage ?? 0,
     classAvg: summary?.averagePercentage ?? 0,
   }))
@@ -233,13 +252,21 @@ export default function ReportsPage() {
                       <th>Student</th>
                       <th>Performance</th>
                       <th>Score</th>
+                      <th>Note (/20)</th>
                       <th>Grade</th>
                       <th>Report</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {studentExams.map((se, i) => (
-                      <StudentRow key={se._id} se={se} index={i} onDownload={(id) => downloadReport.mutate(id)} />
+                    {studentExams.map((se: ReportStudentExam, i: number) => (
+                      <StudentRow
+                        key={se._id}
+                        se={se}
+                        index={i}
+                        onPreview={(id) => previewReport.mutate(id)}
+                        onDownload={(id) => downloadReport.mutate(id)}
+                        onGenerated={() => { void refetchReport() }}
+                      />
                     ))}
                   </tbody>
                 </table>

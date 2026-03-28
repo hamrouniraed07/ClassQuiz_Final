@@ -1,10 +1,10 @@
 import { motion } from 'framer-motion'
-import { Users, FileText, AlertTriangle, CheckCircle, TrendingUp, Award } from 'lucide-react'
+import { Users, FileText, AlertTriangle, CheckCircle, TrendingUp, Award, Eye, Download } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Legend
 } from 'recharts'
-import { useDashboard, useStudentExams, useValidations } from '@/hooks/useApi'
+import { useDashboard, useStudentExams, useValidations, useDownloadReport, usePreviewReport } from '@/hooks/useApi'
 import { StatCard, LoadingPage, SectionCard } from '@/components/shared'
 import { StatusBadge } from '@/components/shared'
 import { formatDate } from '@/lib/utils'
@@ -41,6 +41,8 @@ export default function DashboardPage() {
   const { data: stats, isLoading } = useDashboard()
   const { data: recentExams } = useStudentExams({ page: 1, limit: 5 })
   const { data: pendingValidations } = useValidations({ status: 'pending', page: 1, limit: 4 })
+  const downloadReport = useDownloadReport()
+  const previewReport = usePreviewReport()
 
   if (isLoading) return <LoadingPage />
 
@@ -124,7 +126,7 @@ export default function DashboardPage() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
           <SectionCard title="Recent Exams">
             <table className="w-full table-dark">
-              <thead><tr><th>Student</th><th>Exam</th><th>Score</th><th>Status</th></tr></thead>
+              <thead><tr><th>Student</th><th>Exam</th><th>Score</th><th>Status</th><th>Report</th></tr></thead>
               <tbody>
                 {recentExams?.studentExams.slice(0, 5).map(se => (
                   <tr key={se._id}>
@@ -132,10 +134,32 @@ export default function DashboardPage() {
                     <td className="text-slate-400">{typeof se.exam === 'object' ? se.exam.subject : '—'}</td>
                     <td className="font-semibold text-white">{se.percentage != null ? `${se.percentage}%` : '—'}</td>
                     <td><StatusBadge status={se.status} /></td>
+                    <td>
+                      {se.reportPath ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => previewReport.mutate(se._id)}
+                            title="Open pedagogical report"
+                            className="p-1.5 rounded-lg hover:bg-sky-500/15 text-slate-400 hover:text-sky-400 transition-colors"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => downloadReport.mutate(se._id)}
+                            title="Download report"
+                            className="p-1.5 rounded-lg hover:bg-teal-500/15 text-slate-400 hover:text-teal-400 transition-colors"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {!recentExams?.studentExams.length && (
-                  <tr><td colSpan={4} className="text-center text-slate-500 py-6">No exams yet</td></tr>
+                  <tr><td colSpan={5} className="text-center text-slate-500 py-6">No exams yet</td></tr>
                 )}
               </tbody>
             </table>

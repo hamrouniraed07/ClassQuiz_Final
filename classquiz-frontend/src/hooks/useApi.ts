@@ -3,7 +3,7 @@ import api from '@/lib/api'
 import type {
   Student, Exam, StudentExam, Validation, BatchUpload,
   CreateStudentDto, LoginCredentials, AuthResponse, DashboardStats,
-  CSVImportResult, Question, OCRExtractionResult,
+  CSVImportResult, Question, OCRExtractionResult, ExamReportData,
 } from '@/types'
 import type { ClassLevel } from '@/constants/domain'
 
@@ -161,7 +161,7 @@ export const useBatchUpload = () => { const qc = useQueryClient(); return useMut
 export const useEvaluateExam = () => { const qc = useQueryClient(); return useMutation({ mutationFn: async (id: string) => { await api.post(`/student-exams/${id}/evaluate`) }, onSuccess: (_d, id) => qc.invalidateQueries({ queryKey: QK.studentExam(id) }) }) }
 
 // ── Validations ───────────────────────────────────────────────────────────────
-export const useValidations = (params?: { status?: string; examId?: string; page?: number }) =>
+export const useValidations = (params?: { status?: string; examId?: string; page?: number; limit?: number }) =>
   useQuery({ queryKey: QK.validations(params), queryFn: async () => { const { data } = await api.get('/validations', { params }); return data.data as { validations: Validation[]; pagination: any } } })
 export const useValidation = (id: string) =>
   useQuery({ queryKey: QK.validation(id), queryFn: async () => { const { data } = await api.get(`/validations/${id}`); return data.data as Validation }, enabled: !!id })
@@ -172,6 +172,7 @@ export const useSkipValidation = () => { const qc = useQueryClient(); return use
 
 // ── Reports ───────────────────────────────────────────────────────────────────
 export const useExamReport = (examId: string) =>
-  useQuery({ queryKey: QK.examReport(examId), queryFn: async () => { const { data } = await api.get(`/reports/exam/${examId}`); return data.data }, enabled: !!examId })
+  useQuery({ queryKey: QK.examReport(examId), queryFn: async () => { const { data } = await api.get(`/reports/exam/${examId}`); return data.data as ExamReportData }, enabled: !!examId })
 export const useGenerateReport = () => useMutation({ mutationFn: async (studentExamId: string) => { const { data } = await api.post(`/reports/generate/${studentExamId}`); return data.data } })
-export const useDownloadReport = () => useMutation({ mutationFn: async (studentExamId: string) => { const res = await api.get(`/reports/download/${studentExamId}`, { responseType: 'blob' }); const url = URL.createObjectURL(res.data); const a = document.createElement('a'); a.href = url; a.download = `report_${studentExamId}.pdf`; a.click(); URL.revokeObjectURL(url) } })
+export const useDownloadReport = () => useMutation({ mutationFn: async (studentExamId: string) => { const res = await api.get(`/reports/download/${studentExamId}`, { responseType: 'blob' }); const url = URL.createObjectURL(res.data); const a = document.createElement('a'); a.href = url; a.download = `report_${studentExamId}.pdf`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000) } })
+export const usePreviewReport = () => useMutation({ mutationFn: async (studentExamId: string) => { const res = await api.get(`/reports/download/${studentExamId}`, { responseType: 'blob' }); const url = URL.createObjectURL(res.data); const opened = window.open(url, '_blank', 'noopener,noreferrer'); if (!opened) { const a = document.createElement('a'); a.href = url; a.target = '_blank'; document.body.appendChild(a); a.click(); a.remove() } setTimeout(() => URL.revokeObjectURL(url), 60_000) } })
