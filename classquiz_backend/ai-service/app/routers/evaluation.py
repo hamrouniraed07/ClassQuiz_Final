@@ -1,6 +1,6 @@
 """
 Evaluation Router
-Endpoint for grading student answers with GPT-4o-mini.
+Endpoint for grading student answers with Ollama Llama3.2.
 """
 
 import structlog
@@ -18,20 +18,13 @@ settings = get_settings()
 def _friendly_evaluation_error(exc: Exception) -> str:
     msg = str(exc)
     lower_msg = msg.lower()
-    provider = settings.ai_provider.lower()
 
-    if provider == "openai" and ("insufficient_quota" in lower_msg or "exceeded your current quota" in lower_msg):
-        return "Evaluation unavailable: OpenAI quota exceeded. Please update billing/quota and retry."
-
-    if provider == "openai" and ("invalid_api_key" in lower_msg or "incorrect api key" in lower_msg):
-        return "Evaluation unavailable: OpenAI API key is invalid. Please update OPENAI_API_KEY and retry."
-
-    if provider == "ollama" and (
+    if (
         "connection refused" in lower_msg
         or "name or service not known" in lower_msg
         or "timed out" in lower_msg
     ):
-        return "Evaluation unavailable: Ollama is unreachable. Please ensure Ollama is running and OLLAMA_BASE_URL is correct."
+        return "Evaluation unavailable: Ollama is unreachable. Please ensure Ollama is running at " + settings.ollama_base_url + " and retry."
 
     return "Evaluation processing failed. Please retry in a moment."
 
@@ -39,7 +32,7 @@ def _friendly_evaluation_error(exc: Exception) -> str:
 @router.post(
     "/grade",
     response_model=GradeResponse,
-    summary="Grade student answers with configured AI provider",
+    summary="Grade student answers with Ollama",
     description=(
         "Submit student answers alongside correct answers. "
         "Returns per-question scores, mistake classification, pedagogical feedback, "

@@ -1,7 +1,7 @@
 """
 ClassQuiz AI Service
 ====================
-FastAPI application handling OCR (Gemini) and Evaluation (OpenAI/Ollama).
+FastAPI application handling OCR (Gemini) and Evaluation (Ollama Llama3.2).
 """
 
 import structlog
@@ -31,17 +31,12 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    evaluation_model = (
-        settings.ollama_model
-        if settings.ai_provider.lower() == "ollama"
-        else settings.openai_model
-    )
     logger.info(
         "ClassQuiz AI Service starting",
         env=settings.env,
         gemini_model=settings.gemini_model,
-        ai_provider=settings.ai_provider,
-        evaluation_model=evaluation_model,
+        ollama_model=settings.ollama_model,
+        ollama_base_url=settings.ollama_base_url,
     )
     yield
     logger.info("ClassQuiz AI Service shutting down")
@@ -96,21 +91,17 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ── Health Check ──────────────────────────────────────────────────────────────
 @app.get("/health", tags=["Health"])
 async def health():
-    evaluation_model = (
-        settings.ollama_model
-        if settings.ai_provider.lower() == "ollama"
-        else settings.openai_model
-    )
     return {
         "status": "ok",
         "service": "classquiz-ai-service",
         "version": "1.0.0",
         "models": {
             "ocr": settings.gemini_model,
-            "evaluation": evaluation_model,
+            "evaluation": settings.ollama_model,
         },
         "provider": {
-            "evaluation": settings.ai_provider,
+            "ocr": "gemini",
+            "evaluation": "ollama",
         },
     }
 

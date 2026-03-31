@@ -133,8 +133,8 @@ async function processStudentExamOCR(studentExam, exam) {
 }
 
 /**
- * POST /api/student-exams/:id/evaluate
- * Trigger GPT-4o-mini evaluation
+* POST /api/student-exams/:id/evaluate
+* Trigger Ollama Llama3.2 evaluation
  */
 const evaluateStudentExam = async (req, res) => {
   const studentExam = await StudentExam.findById(req.params.id).populate('exam').populate('student');

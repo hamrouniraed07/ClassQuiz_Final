@@ -4,7 +4,7 @@ ClassQuiz AI Prompts
 These prompts are carefully engineered for:
   1. EXAM_OCR_PROMPT       — Extract questions + correct answers from corrected exam images
   2. ANSWER_OCR_PROMPT     — Extract student handwritten answers from a student exam image
-  3. EVALUATION_SYSTEM     — System prompt for GPT-4o-mini grader
+  3. EVALUATION_SYSTEM     — System prompt for Ollama Llama3.2 grader
   4. build_evaluation_user — Per-exam user prompt builder
 """
 
@@ -125,7 +125,7 @@ If a question has no visible answer area on this page, still include it with ext
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. EVALUATION SYSTEM PROMPT
-#    Used with: GPT-4o-mini
+#    Used with: Ollama Llama3.2
 #    Role:      Sets the grader's persona and grading philosophy
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -173,12 +173,12 @@ You MUST respond with ONLY valid JSON — no markdown, no explanation, no code b
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. EVALUATION USER PROMPT BUILDER
-#    Generates the per-exam grading request sent to GPT-4o-mini
+#    Generates the per-exam grading request sent to Ollama Llama3.2
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_evaluation_user_prompt(questions: list, student_answers: list) -> str:
     """
-    Build the user-turn prompt for GPT-4o-mini evaluation.
+    Build the user-turn prompt for Ollama Llama3.2 evaluation.
 
     Args:
         questions: List of dicts with keys: number, text, correct_answer, max_score, type

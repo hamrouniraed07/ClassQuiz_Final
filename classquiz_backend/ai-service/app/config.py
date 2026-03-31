@@ -1,6 +1,5 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -12,12 +11,7 @@ class Settings(BaseSettings):
     gemini_api_key: str
     gemini_model: str = "gemini-2.0-flash"
 
-    # OpenAI
-    openai_api_key: Optional[str] = None
-    openai_model: str = "gpt-4o-mini"
-
-    # Evaluation provider
-    ai_provider: str = "openai"  # openai | ollama
+    # Ollama (Evaluation provider)
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2:3b"
 

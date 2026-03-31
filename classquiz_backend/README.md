@@ -31,7 +31,7 @@ A production-ready, microservices backend for an AI-powered exam correction and 
 │  │  Port 8000 (internal only)   │                                       │
 │  │                              │  • POST /ocr/extract-exam             │
 │  │  Gemini 2.0 Flash            │    → Extract questions from exam      │
-│  │  GPT-4o-mini                 │  • POST /ocr/extract-answers          │
+  │  Ollama                      │  • POST /ocr/extract-answers          │
 │  │                              │    → Extract student handwriting      │
 │  │                              │  • POST /evaluate/grade               │
 │  │                              │    → Grade + pedagogical feedback     │
@@ -65,7 +65,7 @@ A production-ready, microservices backend for an AI-powered exam correction and 
          │                                    │ Admin corrects OCR
          │ ≥ 70%                              │
          ▼                                    ▼
-5. GPT-4o-mini grades answers ◄───────────────┘
+5. Ollama Llama3.2 grades answers ◄───────────────┘
          │
          ▼
 6. Scores + feedback stored → PDF report generated
@@ -131,7 +131,7 @@ classquiz/
         │   └── prompts.py          # OCR + evaluation prompts ⭐
         ├── services/
         │   ├── ocr_service.py      # Gemini 2.0 integration
-        │   └── evaluation_service.py # GPT-4o-mini integration
+        │   └── evaluation_service.py # Ollama Llama3.2 integration
         └── routers/
             ├── ocr.py              # /ocr endpoints
             └── evaluation.py       # /evaluate endpoints
@@ -153,7 +153,7 @@ cp web-api/.env.example web-api/.env
 
 # Configure AI Service
 cp ai-service/.env.example ai-service/.env
-# Edit: GEMINI_API_KEY, OPENAI_API_KEY
+# Edit: GEMINI_API_KEY
 ```
 
 ### 2. Start All Services
@@ -200,10 +200,10 @@ curl -X POST http://localhost:3000/api/auth/login \
 
 | Variable | Description |
 |---|---|
-| `GEMINI_API_KEY` | Google AI API key |
+| `GEMINI_API_KEY` | Google Gemini API key |
 | `GEMINI_MODEL` | Gemini model name (`gemini-2.0-flash`) |
-| `OPENAI_API_KEY` | OpenAI API key |
-| `OPENAI_MODEL` | OpenAI model (`gpt-4o-mini`) |
+| `OLLAMA_BASE_URL` | Ollama server URL (`http://localhost:11434`) |
+| `OLLAMA_MODEL` | Ollama model name (`llama3.2`) |
 
 ---
 
@@ -215,7 +215,7 @@ curl -X POST http://localhost:3000/api/auth/login \
 
 3. **Structured AI Prompts** — Both prompts enforce JSON-only output with explicit schemas, reducing parsing failures. Temperature is set very low (0.05–0.1) for deterministic extraction.
 
-4. **Retry with Tenacity** — Both Gemini and GPT-4o-mini calls retry on JSON parse errors (transient model output issues) up to 3 times.
+4. **Retry with Tenacity** — Both Gemini and Ollama calls retry on JSON parse errors (transient model output issues) up to 3 times.
 
 5. **Single Admin Architecture** — EdTech platform for classrooms; JWT-based single-admin design avoids complexity of multi-user RBAC.
 

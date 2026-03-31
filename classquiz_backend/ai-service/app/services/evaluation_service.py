@@ -1,6 +1,6 @@
 """
-GPT-4o-mini Evaluation Service
-Grades student answers with pedagogical feedback.
+Ollama Llama3.2 Evaluation Service
+Grades student answers with pedagogical feedback using Ollama.
 """
 
 import json
@@ -8,7 +8,6 @@ import structlog
 from typing import List
 
 import httpx
-from openai import AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from app.config import get_settings
@@ -17,13 +16,6 @@ from app.models.schemas import GradeResponse, QuestionResult, MistakeType
 
 logger = structlog.get_logger()
 settings = get_settings()
-
-# OpenAI client is only required when provider is openai.
-openai_client = (
-    AsyncOpenAI(api_key=settings.openai_api_key)
-    if settings.ai_provider.lower() == "openai"
-    else None
-)
 
 
 def _strip_json_fences(text: str) -> str:
@@ -38,52 +30,28 @@ def _strip_json_fences(text: str) -> str:
 
 
 async def _request_evaluation_completion(user_prompt: str) -> tuple[str, int]:
-    provider = settings.ai_provider.lower()
+    url = f"{settings.ollama_base_url.rstrip('/')}/api/chat"
+    payload = {
+        "model": settings.ollama_model,
+        "stream": False,
+        "format": "json",
+        "messages": [
+            {"role": "system", "content": EVALUATION_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        "options": {
+            "temperature": settings.eval_temperature,
+        },
+    }
 
-    if provider == "ollama":
-        url = f"{settings.ollama_base_url.rstrip('/')}/api/chat"
-        payload = {
-            "model": settings.ollama_model,
-            "stream": False,
-            "format": "json",
-            "messages": [
-                {"role": "system", "content": EVALUATION_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            "options": {
-                "temperature": settings.eval_temperature,
-            },
-        }
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(url, json=payload)
+        response.raise_for_status()
+        data = response.json()
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-            data = response.json()
-
-        raw_text = data.get("message", {}).get("content", "")
-        token_count = int(data.get("prompt_eval_count", 0)) + int(data.get("eval_count", 0))
-        return raw_text, token_count
-
-    if provider == "openai":
-        if openai_client is None:
-            raise ValueError("OPENAI_API_KEY is required when AI_PROVIDER=openai")
-
-        response = await openai_client.chat.completions.create(
-            model=settings.openai_model,
-            temperature=settings.eval_temperature,
-            max_tokens=3000,
-            messages=[
-                {"role": "system", "content": EVALUATION_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format={"type": "json_object"},
-        )
-
-        raw_text = response.choices[0].message.content
-        token_count = response.usage.total_tokens if response.usage else 0
-        return raw_text, token_count
-
-    raise ValueError("AI_PROVIDER must be either 'openai' or 'ollama'")
+    raw_text = data.get("message", {}).get("content", "")
+    token_count = int(data.get("prompt_eval_count", 0)) + int(data.get("eval_count", 0))
+    return raw_text, token_count
 
 
 @retry(
@@ -98,7 +66,7 @@ async def grade_student_exam(
     student_answers: List[dict],
 ) -> GradeResponse:
     """
-    Grade all answers for a student exam using GPT-4o-mini.
+    Grade all answers for a student exam using Ollama Llama3.2.
 
     Args:
         student_exam_id: Reference ID for the student exam
@@ -119,7 +87,7 @@ async def grade_student_exam(
     raw_text, token_count = await _request_evaluation_completion(user_prompt)
     logger.debug(
         "Evaluation raw response",
-        provider=settings.ai_provider,
+        ollama_model=settings.ollama_model,
         length=len(raw_text),
     )
 
@@ -163,7 +131,7 @@ async def grade_student_exam(
     logger.info(
         "Evaluation completed",
         student_exam_id=student_exam_id,
-        provider=settings.ai_provider,
+        ollama_model=settings.ollama_model,
         total_score=total_score,
         max_possible=max_possible,
         percentage=percentage,
