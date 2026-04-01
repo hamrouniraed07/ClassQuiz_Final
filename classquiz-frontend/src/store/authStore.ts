@@ -1,5 +1,6 @@
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { useMemo } from 'react'
+import { useAppDispatch, useAppSelector } from './hooks'
+import { logout as logoutAction, setAuth as setAuthAction } from './authSlice'
 
 interface AuthState {
   token: string | null
@@ -9,21 +10,22 @@ interface AuthState {
   isAuthenticated: boolean
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
-      token: null,
-      user: null,
-      isAuthenticated: false,
-      setAuth: (token, user) => {
-        localStorage.setItem('cq_token', token)
-        set({ token, user, isAuthenticated: true })
+export function useAuthStore(): AuthState {
+  const dispatch = useAppDispatch()
+  const { token, user, isAuthenticated } = useAppSelector((state) => state.auth)
+
+  return useMemo(
+    () => ({
+      token,
+      user,
+      isAuthenticated,
+      setAuth: (nextToken: string, nextUser: { username: string; role: string }) => {
+        dispatch(setAuthAction({ token: nextToken, user: nextUser }))
       },
       logout: () => {
-        localStorage.removeItem('cq_token')
-        set({ token: null, user: null, isAuthenticated: false })
+        dispatch(logoutAction())
       },
     }),
-    { name: 'classquiz-auth', partialize: (s) => ({ token: s.token, user: s.user, isAuthenticated: s.isAuthenticated }) }
+    [dispatch, isAuthenticated, token, user]
   )
-)
+}
