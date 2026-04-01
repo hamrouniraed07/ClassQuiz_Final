@@ -65,7 +65,7 @@ function useReduxQuery<T>(options: {
       return data
     } catch (error: any) {
       dispatch(queryFailed({ cacheKey, token, error: toErrorMessage(error) }))
-      throw error
+      return undefined
     }
   }, [cacheKey, dispatch, enabled, token])
 

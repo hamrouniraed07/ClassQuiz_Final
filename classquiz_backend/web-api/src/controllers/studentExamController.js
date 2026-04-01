@@ -414,6 +414,7 @@ const getBatch = async (req, res) => {
 module.exports = {
   uploadStudentExam,
   evaluateStudentExam,
+  runEvaluationAndReport,
   getStudentExams,
   getStudentExam,
   batchUploadExams,
