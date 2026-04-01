@@ -30,19 +30,27 @@ async function callAIService(endpoint, options = {}) {
 
     if (!response.ok) {
       let errorMessage = `AI Service error [${response.status}]`;
+      let errorDetail = '';
       try {
         const errBody = await response.json();
         if (typeof errBody.detail === 'string') {
+          errorDetail = errBody.detail;
           errorMessage += `: ${errBody.detail}`;
         } else if (errBody.detail) {
+          errorDetail = JSON.stringify(errBody.detail);
           errorMessage += `: ${JSON.stringify(errBody.detail)}`;
         } else {
+          errorDetail = JSON.stringify(errBody);
           errorMessage += `: ${JSON.stringify(errBody)}`;
         }
       } catch {
+        errorDetail = 'Unknown error';
         errorMessage += ': Unknown error';
       }
-      throw new Error(errorMessage);
+      const error = new Error(errorMessage);
+      error.status = response.status;
+      error.detail = errorDetail;
+      throw error;
     }
 
     const data = await response.json();

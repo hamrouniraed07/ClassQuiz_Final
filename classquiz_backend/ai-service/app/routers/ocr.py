@@ -21,6 +21,22 @@ ALLOWED_CONTENT_TYPES = {
 }
 
 
+def _friendly_ocr_error(exc: Exception) -> tuple[int, str]:
+    msg = str(exc)
+    lower_msg = msg.lower()
+
+    if "429" in lower_msg or "exceeded" in lower_msg or "quota" in lower_msg or "spending cap" in lower_msg:
+        return 429, "OCR unavailable: Gemini quota exceeded. Please update billing/quota for GEMINI_API_KEY and retry."
+
+    if "api key" in lower_msg or "invalid" in lower_msg or "permission" in lower_msg:
+        return 401, "OCR unavailable: GEMINI_API_KEY is invalid or unauthorized. Please update the key and retry."
+
+    if "timed out" in lower_msg or "deadline" in lower_msg:
+        return 504, "OCR timeout: Gemini took too long to respond. Please retry."
+
+    return 500, "OCR processing failed. Please retry in a moment."
+
+
 def _validate_image(file: UploadFile, field_name: str) -> None:
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
@@ -77,8 +93,9 @@ async def extract_exam(
             detail="AI model returned invalid JSON. Please retry or check image quality.",
         )
     except Exception as e:
-        logger.error("Exam OCR extraction failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
+        status_code, detail = _friendly_ocr_error(e)
+        logger.error("Exam OCR extraction failed", error=str(e), status_code=status_code, detail=detail)
+        raise HTTPException(status_code=status_code, detail=detail)
 
 
 @router.post(
@@ -127,5 +144,6 @@ async def extract_answers(
             detail="AI model returned invalid JSON. Please retry or improve image quality.",
         )
     except Exception as e:
-        logger.error("Student answer extraction failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Answer extraction failed: {str(e)}")
+        status_code, detail = _friendly_ocr_error(e)
+        logger.error("Student answer extraction failed", error=str(e), status_code=status_code, detail=detail)
+        raise HTTPException(status_code=status_code, detail=detail)

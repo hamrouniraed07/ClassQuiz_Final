@@ -224,21 +224,7 @@ export default function ReportsPage() {
                 </div>
               </SectionCard>
 
-              {gradeDistData.length > 0 && (
-                <SectionCard title="Grade Distribution">
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={gradeDistData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" nameKey="name" label>
-                          {gradeDistData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                        </Pie>
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend wrapperStyle={{ fontSize: 10, color: '#94a3b8' }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </SectionCard>
-              )}
+              
             </div>
           )}
 

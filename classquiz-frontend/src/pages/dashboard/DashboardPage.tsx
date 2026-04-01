@@ -130,8 +130,8 @@ export default function DashboardPage() {
               <tbody>
                 {recentExams?.studentExams.slice(0, 5).map(se => (
                   <tr key={se._id}>
-                    <td>{typeof se.student === 'object' ? se.student.name : '—'}</td>
-                    <td className="text-slate-400">{typeof se.exam === 'object' ? se.exam.subject : '—'}</td>
+                    <td>{se?.student && typeof se.student === 'object' ? (se.student.name || '—') : '—'}</td>
+                    <td className="text-slate-400">{se?.exam && typeof se.exam === 'object' ? (se.exam.subject || '—') : '—'}</td>
                     <td className="font-semibold text-white">{se.percentage != null ? `${se.percentage}%` : '—'}</td>
                     <td><StatusBadge status={se.status} /></td>
                     <td>
@@ -178,8 +178,8 @@ export default function DashboardPage() {
                     <AlertTriangle className="w-4 h-4 text-red-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-white truncate">{v.student.name}</p>
-                    <p className="text-xs text-slate-500">{v.exam.subject} · {v.flaggedAnswers.length} answers flagged</p>
+                    <p className="text-xs font-semibold text-white truncate">{v?.student?.name || 'Unknown Student'}</p>
+                    <p className="text-xs text-slate-500">{v?.exam?.subject || 'Unknown Subject'} · {v?.flaggedAnswers?.length ?? 0} answers flagged</p>
                   </div>
                   <p className="text-xs text-slate-500">{formatDate(v.createdAt)}</p>
                 </div>

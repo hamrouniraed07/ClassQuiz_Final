@@ -95,7 +95,6 @@ function ReviewPanel({ validationId, onNext, onBack }: {
   }
 
   const student = validation.student
-  const exam = validation.exam
 
   return (
     <motion.div
@@ -128,10 +127,10 @@ function ReviewPanel({ validationId, onNext, onBack }: {
         <div className="glass-card p-3">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-semibold text-white">
-              {student.name} — <span className="text-slate-400">{student.code}</span>
+              {student?.name || 'Unknown Student'} — <span className="text-slate-400">{student?.code || 'N/A'}</span>
             </p>
             <span className="badge-sky text-[10px]">
-              {CLASS_LEVEL_LABELS[student.classLevel] ?? student.classLevel}
+              {CLASS_LEVEL_LABELS[student?.classLevel as keyof typeof CLASS_LEVEL_LABELS] ?? student?.classLevel ?? 'N/A'}
             </span>
           </div>
           <div className="aspect-[3/4] rounded-lg bg-navy-950 border border-white/[0.05] flex items-center justify-center overflow-hidden">
@@ -147,11 +146,11 @@ function ReviewPanel({ validationId, onNext, onBack }: {
         <div className="glass-card p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-bold text-white">Flagged Answers</h4>
-            <span className="badge-red text-[10px]">{validation.flaggedAnswers.length} flagged</span>
+            <span className="badge-red text-[10px]">{validation?.flaggedAnswers?.length ?? 0} flagged</span>
           </div>
 
           <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-            {validation.flaggedAnswers.map((answer, idx) => {
+            {(validation.flaggedAnswers ?? []).map((answer, idx) => {
               const isEditing = editingQ === answer.questionNumber
               const correctedVal = corrections[answer.questionNumber]
 
@@ -248,16 +247,25 @@ export default function ValidationPage() {
 
   const validations = validationsData?.validations ?? []
 
+  const getValidationSubject = (v: Validation): Subject | null => {
+    const rawSubject = (v as any)?.exam?.subject
+    return SUBJECTS.includes(rawSubject as Subject) ? (rawSubject as Subject) : null
+  }
+
+  const getStudentDisplayName = (v: Validation): string => {
+    return v?.student?.name || 'Unknown Student'
+  }
+
   // Filter by selected subject
   const subjectValidations = selectedSubject
-    ? validations.filter(v => v.exam.subject === selectedSubject)
+    ? validations.filter(v => getValidationSubject(v) === selectedSubject)
     : []
 
   const getCountForSubject = (subjectKey: string) =>
-    validations.filter(v => v.exam.subject === subjectKey).length
+    validations.filter(v => getValidationSubject(v) === subjectKey).length
 
   const handleSubjectSelect = (subjectKey: string) => {
-    const filtered = validations.filter(v => v.exam.subject === subjectKey)
+    const filtered = validations.filter(v => getValidationSubject(v) === subjectKey)
     if (filtered.length > 0) {
       setSelectedSubject(subjectKey)
       setSelectedValidationId(filtered[0]._id)
@@ -338,7 +346,7 @@ export default function ValidationPage() {
                       onClick={() => {
                         if (validations.length > 0) {
                           setSelectedValidationId(validations[0]._id)
-                          setSelectedSubject(validations[0].exam.subject)
+                          setSelectedSubject(getValidationSubject(validations[0]))
                         }
                       }}
                       className="btn-primary text-xs flex items-center gap-1.5"
@@ -367,14 +375,14 @@ export default function ValidationPage() {
                           <td>
                             <div className="flex items-center gap-2">
                               <div className="w-7 h-7 rounded-lg bg-red-500/15 flex items-center justify-center flex-shrink-0 text-xs font-bold text-red-400">
-                                {v.student.name[0]}
+                                {getStudentDisplayName(v)[0]}
                               </div>
-                              <span className="font-medium text-white">{v.student.name}</span>
+                              <span className="font-medium text-white">{getStudentDisplayName(v)}</span>
                             </div>
                           </td>
-                          <td className="text-slate-400">{v.exam.subject}</td>
+                          <td className="text-slate-400">{getValidationSubject(v) ?? 'Unknown'}</td>
                           <td>
-                            <span className="badge-red">{v.flaggedAnswers.length} answers</span>
+                            <span className="badge-red">{v?.flaggedAnswers?.length ?? 0} answers</span>
                           </td>
                           <td>
                             <ConfidenceBadge score={v.studentExam?.ocrConfidenceAvg ?? 0} />
@@ -383,7 +391,7 @@ export default function ValidationPage() {
                             <button
                               onClick={() => {
                                 setSelectedValidationId(v._id)
-                                setSelectedSubject(v.exam.subject)
+                                setSelectedSubject(getValidationSubject(v))
                               }}
                               className="p-1.5 rounded-lg hover:bg-white/[0.07] text-slate-400 hover:text-amber-400 transition-colors"
                             >

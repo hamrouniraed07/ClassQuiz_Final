@@ -11,6 +11,31 @@ const logger = require('../utils/logger');
 const OCR_THRESHOLD = parseInt(process.env.OCR_CONFIDENCE_THRESHOLD) || 70;
 const OCR_MAX_RETRIES = 3;
 
+function mapOCRError(err) {
+  const message = (err?.message || '').toLowerCase();
+  const detail = (err?.detail || '').toLowerCase();
+  const combined = `${message} ${detail}`;
+
+  if (err?.status === 429 || combined.includes('quota') || combined.includes('spending cap') || combined.includes('429')) {
+    return {
+      statusCode: 429,
+      message: 'OCR unavailable: Gemini quota exceeded. Please update billing/quota for GEMINI_API_KEY and retry.',
+    };
+  }
+
+  if (err?.status === 401 || combined.includes('api key') || combined.includes('unauthorized') || combined.includes('invalid')) {
+    return {
+      statusCode: 401,
+      message: 'OCR unavailable: GEMINI_API_KEY is invalid or unauthorized. Please update the key and retry.',
+    };
+  }
+
+  return {
+    statusCode: 500,
+    message: `OCR processing failed: ${err.message}`,
+  };
+}
+
 function getMimeType(filePath) {
   const ext = path.extname(filePath).toLowerCase();
   return { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.tiff': 'image/tiff', '.tif': 'image/tiff' }[ext] || 'image/jpeg';
@@ -102,7 +127,8 @@ const triggerOCR = async (req, res) => {
   } catch (err) {
     await Exam.findByIdAndUpdate(exam._id, { status: 'draft' });
     logger.error(`OCR failed for exam ${exam._id}: ${err.message}`);
-    return error(res, `OCR processing failed: ${err.message}`, 500);
+    const mapped = mapOCRError(err);
+    return error(res, mapped.message, mapped.statusCode);
   }
 };
 
