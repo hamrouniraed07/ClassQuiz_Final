@@ -315,7 +315,7 @@ function ExamDashboard({ examId, examTitle, onBack }: {
             <div className="w-32">Student</div>
             <div className="flex-1">Pipeline</div>
             <div className="w-28 text-right">Status</div>
-            <div className="w-36 text-right">Actions</div>
+            <div className="w-36 text-right">OCR</div>
           </div>
           {studentExams.map((se: any, i: number) => {
             const name = typeof se.student === 'object' ? se.student.name : 'Unknown'
