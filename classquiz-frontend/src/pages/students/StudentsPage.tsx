@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Search, Pencil, Trash2, Users, X, ChevronLeft, ChevronRight, FileSpreadsheet, Upload, AlertTriangle } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Users, X, ChevronLeft, ChevronRight, FileSpreadsheet, Upload, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
 import { useStudents, useCreateStudent, useUpdateStudent, useDeleteStudent, useImportCSV } from '@/hooks/useApi'
 import { LoadingPage, EmptyState, StatusBadge, PageHeader } from '@/components/shared'
 import { CLASS_LEVELS, CLASS_LEVEL_LABELS } from '@/constants/domain'
@@ -63,14 +63,22 @@ function EditStudentModal({ student, onClose }: { student: Student; onClose: () 
     classLevel: student.classLevel as ClassLevel,
   })
   const [error, setError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const update = useUpdateStudent()
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setError('')
+    e.preventDefault()
+    if (isSubmitting || update.isPending) return
+    setError('')
+    setIsSubmitting(true)
     try {
       await update.mutateAsync({ id: student._id, name: form.name, code: form.code, classLevel: form.classLevel })
       onClose()
-    } catch (err: any) { setError(err.response?.data?.message || 'Failed to update student') }
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to update student')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -100,7 +108,7 @@ function EditStudentModal({ student, onClose }: { student: Student; onClose: () 
           {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">{error}</p>}
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancel</button>
-            <button type="submit" disabled={update.isPending} className="btn-primary flex-1">{update.isPending ? 'Saving…' : 'Save Changes'}</button>
+            <button type="submit" disabled={update.isPending || isSubmitting} className="btn-primary flex-1">{update.isPending || isSubmitting ? 'Saving…' : 'Save Changes'}</button>
           </div>
         </form>
       </motion.div>
@@ -143,6 +151,12 @@ function ImportCSVModal({ onClose }: { onClose: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const importCSV = useImportCSV()
 
+  const summary = result?.summary
+  const totalRows = summary?.totalRows ?? 0
+  const successCount = summary?.successCount ?? 0
+  const failedCount = summary?.failedCount ?? 0
+  const successRate = totalRows > 0 ? Math.round((successCount / totalRows) * 100) : 0
+
   const handleImport = async () => {
     if (!file) return; setError(''); setResult(null)
     try { const res = await importCSV.mutateAsync(file); setResult(res) }
@@ -169,10 +183,61 @@ function ImportCSVModal({ onClose }: { onClose: () => void }) {
         </div>
         {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg mb-4">{error}</p>}
         {result && (
-          <div className="mb-4 grid grid-cols-3 gap-2">
-            <div className="p-2.5 rounded-lg bg-slate-800/50 text-center"><p className="text-lg font-bold text-white">{result.summary.totalRows}</p><p className="text-[10px] text-slate-500">Total</p></div>
-            <div className="p-2.5 rounded-lg bg-emerald-500/10 text-center"><p className="text-lg font-bold text-emerald-400">{result.summary.successCount}</p><p className="text-[10px] text-slate-500">OK</p></div>
-            <div className="p-2.5 rounded-lg bg-red-500/10 text-center"><p className="text-lg font-bold text-red-400">{result.summary.failedCount}</p><p className="text-[10px] text-slate-500">Failed</p></div>
+          <div className="mb-4 space-y-3">
+            <div className={`p-3 rounded-xl border ${failedCount === 0 ? 'bg-emerald-500/10 border-emerald-500/25' : successCount === 0 ? 'bg-red-500/10 border-red-500/25' : 'bg-amber-500/10 border-amber-500/25'}`}>
+              <div className="flex items-center gap-2 mb-1">
+                {failedCount === 0 ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-red-400" />
+                )}
+                <p className="text-xs font-semibold text-white">
+                  {failedCount === 0 ? 'Import completed successfully' : 'Import completed with errors'}
+                </p>
+              </div>
+              <p className="text-xs text-slate-300">
+                {successCount} success / {failedCount} failed (total {totalRows})
+              </p>
+            </div>
+
+            <div className="mb-4 grid grid-cols-3 gap-2">
+              <div className="p-2.5 rounded-lg bg-slate-800/50 text-center">
+                <p className="text-lg font-bold text-white">{totalRows}</p>
+                <p className="text-[10px] text-slate-500">Total</p>
+              </div>
+              <div className="p-2.5 rounded-lg bg-emerald-500/10 text-center">
+                <p className="text-lg font-bold text-emerald-400">{successCount}</p>
+                <p className="text-[10px] text-slate-500">Success</p>
+              </div>
+              <div className="p-2.5 rounded-lg bg-red-500/10 text-center">
+                <p className="text-lg font-bold text-red-400">{failedCount}</p>
+                <p className="text-[10px] text-slate-500">Failed</p>
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-slate-900/60 border border-white/[0.06]">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] text-slate-400">Import distribution</span>
+                <span className="text-[10px] text-slate-400">{successRate}% success</span>
+              </div>
+              <div className="h-2 rounded-full bg-slate-800 overflow-hidden flex">
+                <div className="h-full bg-emerald-500" style={{ width: `${successRate}%` }} />
+                <div className="h-full bg-red-500" style={{ width: `${100 - successRate}%` }} />
+              </div>
+            </div>
+
+            {result.errors?.length > 0 && (
+              <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-2.5 max-h-28 overflow-y-auto">
+                <p className="text-[10px] font-semibold text-red-400 mb-1">First errors:</p>
+                <div className="space-y-1">
+                  {result.errors.slice(0, 3).map((e, idx) => (
+                    <p key={`${e.row}-${e.field}-${idx}`} className="text-[10px] text-slate-300">
+                      Row {e.row} - {e.field}: {e.reason}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
         <div className="flex gap-3">
@@ -264,7 +329,7 @@ export default function StudentsPage() {
           : (
           <div className="overflow-x-auto">
             <table className="w-full table-dark">
-              <thead><tr><th>Student</th><th>Code</th><th>Class</th><th>Status</th><th>Joined</th><th className="text-right">Actions</th></tr></thead>
+              <thead><tr><th>Student</th><th>Code</th><th>Class</th><th>Status</th><th>Joined</th><th className="text-right w-24">Actions</th></tr></thead>
               <tbody>
                 {students.map((s, i) => (
                   <motion.tr key={s._id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}>
@@ -278,8 +343,8 @@ export default function StudentsPage() {
                     <td><span className="badge-sky">{CLASS_LEVEL_LABELS[s.classLevel] ?? s.classLevel}</span></td>
                     <td><StatusBadge status={s.isActive ? 'active' : 'inactive'} /></td>
                     <td className="text-slate-500 text-xs">{new Date(s.createdAt).toLocaleDateString()}</td>
-                    <td>
-                      <div className="flex items-center justify-end gap-1">
+                    <td className="w-24 pr-3">
+                      <div className="flex items-center justify-end gap-0.5">
                         <button onClick={() => setEditStudent(s)}
                           className="p-1.5 rounded-lg hover:bg-white/[0.07] text-slate-400 hover:text-amber-400 transition-colors">
                           <Pencil className="w-3.5 h-3.5" />

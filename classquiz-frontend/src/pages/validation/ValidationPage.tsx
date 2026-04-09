@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useSearchParams } from 'react-router-dom'
 import {
   CheckSquare, AlertTriangle, ChevronRight, CheckCircle, SkipForward,
   Edit3, X, Save, Eye, ZoomIn, RotateCw
@@ -235,14 +236,17 @@ function ReviewPanel({ validationId, onNext, onBack }: {
 
 // ── Main Validation Page ──────────────────────────────────────────────────────
 export default function ValidationPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null)
   const [selectedValidationId, setSelectedValidationId] = useState<string | null>(null)
   const [currentIndex, setCurrentIndex] = useState(0)
+  const requestedStudentExamId = searchParams.get('studentExamId')
 
   const { data: stats } = useValidationStats()
   const { data: validationsData, isLoading } = useValidations({
     status: 'pending',
     page: 1,
+    limit: 200,
   })
 
   const validations = validationsData?.validations ?? []
@@ -255,6 +259,28 @@ export default function ValidationPage() {
   const getStudentDisplayName = (v: Validation): string => {
     return v?.student?.name || 'Unknown Student'
   }
+
+  useEffect(() => {
+    if (!requestedStudentExamId || validations.length === 0) return
+
+    const target = validations.find(v => v?.studentExam?._id === requestedStudentExamId)
+    if (!target) return
+
+    const targetSubject = getValidationSubject(target)
+    const sameSubject = targetSubject
+      ? validations.filter(v => getValidationSubject(v) === targetSubject)
+      : validations
+
+    const idx = sameSubject.findIndex(v => v._id === target._id)
+
+    setSelectedSubject(targetSubject)
+    setSelectedValidationId(target._id)
+    setCurrentIndex(idx >= 0 ? idx : 0)
+
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('studentExamId')
+    setSearchParams(nextParams, { replace: true })
+  }, [requestedStudentExamId, validations, searchParams, setSearchParams])
 
   // Filter by selected subject
   const subjectValidations = selectedSubject

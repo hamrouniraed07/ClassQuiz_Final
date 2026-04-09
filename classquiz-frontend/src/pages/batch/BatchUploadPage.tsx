@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useDropzone } from 'react-dropzone'
+import { useNavigate } from 'react-router-dom'
 import {
   Upload, CheckCircle, ChevronRight, ChevronLeft, Play, FileImage,
   AlertCircle, Loader2, XCircle, RotateCw, Plus, Eye, Users, ArrowLeft
@@ -47,11 +48,12 @@ function canViewOCR(status: string) {
 }
 
 // ── Pipeline Row ──────────────────────────────────────────────────────────────
-function PipelineRow({ fileName, studentName, status, index, onViewOCR }: {
-  fileName: string; studentName: string; status: string; index: number; onViewOCR: () => void
+function PipelineRow({ fileName, studentName, status, index, onViewOCR, onOpenReview }: {
+  fileName: string; studentName: string; status: string; index: number; onViewOCR: () => void; onOpenReview: () => void
 }) {
   const { percent, stage, color, bar } = getPipelineProgress(status)
   const viewEnabled = canViewOCR(status)
+  const reviewEnabled = status === 'validation_pending'
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
@@ -84,7 +86,16 @@ function PipelineRow({ fileName, studentName, status, index, onViewOCR }: {
         <StatusDot status={status} />
         <span className={`text-xs font-semibold ${color}`}>{stage}</span>
       </div>
-      <div className="w-20 flex-shrink-0 flex justify-end">
+      <div className="w-36 flex-shrink-0 flex justify-end gap-2">
+        {reviewEnabled && (
+          <button
+            onClick={onOpenReview}
+            className="btn-primary text-xs px-2 py-1 h-auto inline-flex items-center gap-1"
+            title="Open this submission in Validation Center"
+          >
+            <AlertCircle className="w-3.5 h-3.5" /> Review
+          </button>
+        )}
         <button
           onClick={onViewOCR}
           disabled={!viewEnabled}
@@ -192,6 +203,7 @@ function OCRResultModal({ studentExamId, onClose }: { studentExamId: string; onC
 function ExamDashboard({ examId, examTitle, onBack }: {
   examId: string; examTitle: string; onBack: () => void
 }) {
+  const navigate = useNavigate()
   const [showUpload, setShowUpload] = useState(false)
   const [selectedStudentExamId, setSelectedStudentExamId] = useState<string | null>(null)
   const { data: studentsData } = useStudents({ limit: 200 })
@@ -303,7 +315,7 @@ function ExamDashboard({ examId, examTitle, onBack }: {
             <div className="w-32">Student</div>
             <div className="flex-1">Pipeline</div>
             <div className="w-28 text-right">Status</div>
-            <div className="w-20 text-right">OCR</div>
+            <div className="w-36 text-right">Actions</div>
           </div>
           {studentExams.map((se: any, i: number) => {
             const name = typeof se.student === 'object' ? se.student.name : 'Unknown'
@@ -316,6 +328,7 @@ function ExamDashboard({ examId, examTitle, onBack }: {
                 status={se.status}
                 index={i}
                 onViewOCR={() => setSelectedStudentExamId(se._id)}
+                onOpenReview={() => navigate(`/validation?studentExamId=${se._id}`)}
               />
             )
           })}

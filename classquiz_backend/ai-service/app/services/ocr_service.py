@@ -9,8 +9,7 @@ import structlog
 from typing import List, Optional
 
 import google.generativeai as genai
-from google.generativeai.types import GenerationConfig
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps, ImageStat
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 
 from app.config import get_settings
@@ -31,6 +30,51 @@ def _load_image(image_bytes: bytes) -> Image.Image:
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
     return img
+
+
+def _upscale_if_needed(img: Image.Image, min_width: int = 1600) -> Image.Image:
+    """Upscale low-resolution scans to improve handwriting legibility for OCR."""
+    width, height = img.size
+    if width >= min_width:
+        return img
+
+    scale = min_width / float(width)
+    return img.resize((int(width * scale), int(height * scale)), Image.Resampling.LANCZOS)
+
+
+def _prepare_student_ocr_variants(image_bytes: bytes) -> dict[str, Image.Image]:
+    """Create multiple views of the same page to improve OCR on handwriting."""
+    original = _upscale_if_needed(_load_image(image_bytes).convert("RGB"))
+
+    gray = ImageOps.autocontrast(original.convert("L"), cutoff=2)
+    denoised = gray.filter(ImageFilter.MedianFilter(size=3))
+    sharpened = denoised.filter(ImageFilter.UnsharpMask(radius=1.4, percent=180, threshold=2))
+    high_contrast = ImageEnhance.Contrast(sharpened).enhance(1.5)
+
+    avg_luma = float(ImageStat.Stat(high_contrast).mean[0])
+    threshold = max(90, min(170, int(avg_luma * 0.92)))
+    binary = high_contrast.point(lambda p: 255 if p > threshold else 0, mode="1").convert("L")
+
+    return {
+        "original": original,
+        "sharpened": sharpened,
+        "binary": binary,
+    }
+
+
+def _crop_answer_column(img: Image.Image) -> Image.Image:
+    """Crop the likely student-answer column to reduce confusion with printed questions."""
+    width, height = img.size
+
+    # For this exam layout (Arabic sheet), questions are on the right and answers on the left.
+    left = 0
+    right = int(width * 0.58)
+    top = int(height * 0.18)
+    bottom = int(height * 0.96)
+
+    right = max(right, left + 10)
+    bottom = max(bottom, top + 10)
+    return img.crop((left, top, right, bottom))
 
 
 def _get_generation_config(temperature: float = 0.1, max_tokens: int = 8192) -> dict:
@@ -96,6 +140,224 @@ def _extract_json(text: str) -> str:
         f"Could not extract valid JSON. Response preview: {preview}",
         text, 0
     )
+
+
+_ARABIC_DIGIT_TRANSLATION = str.maketrans({
+    "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4",
+    "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
+    "۰": "0", "۱": "1", "۲": "2", "۳": "3", "۴": "4",
+    "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9",
+    "٫": ".", "٬": ",",
+})
+
+
+def _normalize_digits(text: str) -> str:
+    return text.translate(_ARABIC_DIGIT_TRANSLATION)
+
+
+def _clean_extracted_text(text: str) -> str:
+    """Normalize obvious OCR artifacts while preserving student intent."""
+    if text is None:
+        return ""
+
+    cleaned = str(text).replace("\u200f", "").replace("\u200e", "")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = _normalize_digits(cleaned)
+
+    # Numeric-only expressions often include accidental trailing dash artifacts.
+    if re.fullmatch(r"[0-9\s+\-*/=().,]+", cleaned):
+        cleaned = cleaned.rstrip("-–—").strip()
+
+    return cleaned
+
+
+def _calibrate_confidence(extracted_text: str, model_confidence: float) -> float:
+    """Reduce overconfident OCR scores when extracted text looks noisy/uncertain."""
+    text = extracted_text.strip()
+    if not text:
+        return 0.0
+
+    score = float(model_confidence)
+    penalty = 0.0
+
+    if "..." in text:
+        penalty += 10
+    if re.search(r"\?{2,}|\.{4,}", text):
+        penalty += 10
+    if len(text) <= 2:
+        penalty += 8
+    if re.search(r"[^0-9A-Za-z\s\u0600-\u06FF+\-*/=().,]", text):
+        penalty += 6
+
+    if re.fullmatch(r"[0-9\s+\-*/=().,]+", text):
+        score += 3
+
+    cap = 95.0
+    if penalty >= 10:
+        cap = 88.0
+    if penalty >= 20:
+        cap = 80.0
+
+    score = min(score, cap)
+    score = score - (penalty * 0.7)
+    return round(max(0.0, min(100.0, score)), 1)
+
+
+def _postprocess_answer_payload(data: dict, question_numbers: List[int]) -> dict:
+    """Ensure stable answer structure and confidence calibration."""
+    normalized_answers: List[dict] = []
+    by_number: dict[int, dict] = {}
+
+    for answer in data.get("answers", []):
+        try:
+            qnum = int(answer.get("question_number"))
+        except (TypeError, ValueError):
+            continue
+
+        text = _clean_extracted_text(answer.get("extracted_text", ""))
+        model_conf = float(answer.get("confidence_score", 0) or 0)
+        calibrated = _calibrate_confidence(text, model_conf)
+
+        by_number[qnum] = {
+            "question_number": qnum,
+            "extracted_text": text,
+            "confidence_score": calibrated,
+        }
+
+    for qnum in question_numbers:
+        normalized_answers.append(
+            by_number.get(
+                qnum,
+                {
+                    "question_number": qnum,
+                    "extracted_text": "",
+                    "confidence_score": 0.0,
+                },
+            )
+        )
+
+    average_confidence = (
+        sum(a["confidence_score"] for a in normalized_answers) / len(normalized_answers)
+        if normalized_answers else 0.0
+    )
+    model_overall = float(data.get("overall_confidence", average_confidence) or 0)
+
+    # Trust model confidence partially, but anchor it to per-answer scores.
+    overall_confidence = round(max(0.0, min(100.0, (0.4 * model_overall) + (0.6 * average_confidence))), 1)
+
+    return {
+        "answers": normalized_answers,
+        "overall_confidence": overall_confidence,
+        "student_name_detected": data.get("student_name_detected"),
+        "exam_id_detected": data.get("exam_id_detected"),
+    }
+
+
+# Arabic "I don't know" phrases — common in primary school exams
+_ARABIC_UNKNOWN_PHRASES = [
+    "لا أستطيع", "لا استطيع", "لا أعرف", "لا اعرف",
+    "ما أعرف", "ما اعرف", "لا أدري", "لا ادري",
+    "لا أعلم", "لا اعلم",
+]
+
+
+def _contains_arabic_text(text: str) -> bool:
+    """Return True if text contains Arabic Unicode characters."""
+    return bool(re.search(r"[\u0600-\u06FF]", text))
+
+
+def _looks_like_number_expression(text: str) -> bool:
+    """Return True if text looks like a numeric/math expression."""
+    # Matches things like: 1900, ١٩٠٠, 4000+4000, ٤٠٠٠+٤٠٠٠, 9.5, etc.
+    cleaned = re.sub(r"[\s\+\-\×\÷\=\.]", "", text)
+    # Arabic-Indic digits: ٠١٢٣٤٥٦٧٨٩
+    return bool(re.fullmatch(r"[\d٠١٢٣٤٥٦٧٨٩]+", cleaned))
+
+
+def _apply_semantic_confidence(
+    answers: list,
+    questions: list,
+) -> list:
+    """
+    Detect false-confidence cases where Gemini hallucinated a numeric answer
+    from Arabic text (or vice versa). Downgrade confidence to force validation.
+    """
+    # Build a quick lookup: question_number -> question type
+    q_types = {q.get("number"): q.get("type", "short_answer") for q in questions}
+
+    corrected = []
+    for answer in answers:
+        text = (answer.extracted_text or "").strip()
+        q_type = q_types.get(answer.question_number, "short_answer")
+
+        # Case 1: answer contains Arabic text but is numeric type question
+        # and confidence is high -> likely hallucination
+        if (
+            _contains_arabic_text(text)
+            and q_type in ("short_answer", "fill_blank")
+            and answer.confidence_score > 60
+        ):
+            # Check if it's an "I don't know" phrase - valid answer, keep text
+            # but force low confidence so teacher reviews it
+            is_unknown_phrase = any(phrase in text for phrase in _ARABIC_UNKNOWN_PHRASES)
+            if is_unknown_phrase:
+                logger.warning(
+                    "Semantic check: student wrote 'unknown' phrase, forcing validation",
+                    question_number=answer.question_number,
+                    extracted_text=text,
+                    original_confidence=answer.confidence_score,
+                )
+                answer.confidence_score = 25.0  # force into validation queue
+
+        # Case 2: extracted text looks purely numeric but the question
+        # context suggests text was expected (e.g. all other answers are Arabic)
+        # - handled by Case 1 on OTHER answers triggering overall_confidence drop
+
+        # Case 3: extracted text is suspiciously short for a math expression
+        # that doesn't match any valid number pattern -> possible misread
+        if (
+            _looks_like_number_expression(text) is False
+            and q_type in ("short_answer", "fill_blank")
+            and len(text) > 0
+            and answer.confidence_score > 80
+            and not _contains_arabic_text(text)
+        ):
+            # Non-Arabic, non-numeric, high confidence -> unusual, flag it
+            answer.confidence_score = min(answer.confidence_score, 55.0)
+
+        corrected.append(answer)
+
+    return corrected
+
+
+def _detect_hallucinated_answers(answers: list, questions: list) -> list:
+    """
+    Detect the specific hallucination pattern where Gemini outputs
+    a plausible math answer (e.g. '4500 و 4500') for a question
+    that the student likely left blank or wrote 'I don't know'.
+
+    Heuristic: if an answer contains BOTH Arabic connector words (و، أو، مع)
+    AND numbers, AND no such mixed pattern appears in other answers,
+    it is suspicious - flag it for human validation.
+    """
+    # Pattern: digit(s) + Arabic connector + digit(s)
+    mixed_pattern = re.compile(r"\d+\s*[وأو]\s*\d+")
+
+    for answer in answers:
+        text = (answer.extracted_text or "").strip()
+
+        # Flag digit+Arabic-connector+digit as suspicious
+        if mixed_pattern.search(text) and answer.confidence_score > 60:
+            logger.warning(
+                "Possible hallucinated answer detected (digit+connector+digit pattern)",
+                question_number=answer.question_number,
+                extracted_text=text,
+                original_confidence=answer.confidence_score,
+            )
+            # Force into validation queue
+            answer.confidence_score = 30.0
+
+    return answers
 
 
 @retry(
@@ -166,7 +428,7 @@ async def extract_student_answers(
     model = genai.GenerativeModel(settings.gemini_model)
 
     questions_json = json.dumps(
-        [{"number": q["number"], "text": q["text"], "type": q.get("type", "short_answer")}
+        [{"number": q["number"], "type": q.get("type", "short_answer")}
          for q in questions],
         indent=2,
         ensure_ascii=False,
@@ -180,22 +442,45 @@ async def extract_student_answers(
         .replace("{questions_json}", questions_json)
     )
 
-    img = _load_image(student_exam_image)
+    image_variants = _prepare_student_ocr_variants(student_exam_image)
 
     gen_config = _get_generation_config(temperature=0.05, max_tokens=8192)
 
     response = model.generate_content(
-        [prompt, img],
+        [
+            prompt,
+            "[Original color page]",
+            image_variants["original"],
+            "[Answer-column crop only (primary focus)]",
+            _crop_answer_column(image_variants["original"]),
+            "[Enhanced grayscale page for handwriting clarity]",
+            image_variants["sharpened"],
+            "[Enhanced answer-column crop]",
+            _crop_answer_column(image_variants["sharpened"]),
+            "[High-contrast binary page for faint strokes]",
+            image_variants["binary"],
+            "[Binary answer-column crop]",
+            _crop_answer_column(image_variants["binary"]),
+        ],
         generation_config=gen_config,
     )
 
-    raw_text = response.text
+    raw_text = response.text or ""
     logger.info("Gemini answer OCR raw response", length=len(raw_text), preview=raw_text[:300])
 
     clean_json = _extract_json(raw_text)
-    data = json.loads(clean_json)
+    raw_data = json.loads(clean_json)
+    data = _postprocess_answer_payload(raw_data, [q["number"] for q in questions])
 
     result = AnswerOCRResponse(**data)
+    result.answers = _detect_hallucinated_answers(result.answers, questions)
+    result.answers = _apply_semantic_confidence(result.answers, questions)
+
+    if result.answers:
+        result.overall_confidence = round(
+            sum(a.confidence_score for a in result.answers) / len(result.answers), 2
+        )
+
     logger.info(
         "Student answer OCR completed",
         answer_count=len(result.answers),

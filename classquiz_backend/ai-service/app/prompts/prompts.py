@@ -10,7 +10,7 @@ These prompts are carefully engineered for:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. EXAM OCR PROMPT
-#    Used with: Gemini 2.0 Vision
+#    Used with: Gemini 2.5 Vision
 #    Input:     Corrected exam image(s), optional blank exam images
 #    Output:    Structured JSON with questions and correct answers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -83,25 +83,49 @@ This is a student's completed exam paper. The exam contains the following {num_q
 {questions_json}
 
 ## YOUR TASK
-For each question listed above, locate and extract the student's handwritten answer from the image.
+For each question, locate and extract ONLY what the student physically wrote.
 
-## EXTRACTION RULES
-1. Match answers to questions by question number, layout position, and any visible labels.
-2. Extract the FULL answer text — do not summarize or interpret, copy exactly what is written.
-3. If an answer box is empty, crossed out, or clearly blank: return extracted_text as "".
-4. Handle crossed-out words: if the student crossed something out and rewrote it, use the FINAL version.
-5. For multiple choice: return the selected option letter (A, B, C, D) and its text if visible.
-6. For fill-in-the-blank: return only the written word(s) in the blank.
+## CRITICAL RULES — VIOLATIONS ARE SERIOUS:
+
+### RULE 1 — NEVER ANSWER THE QUESTION YOURSELF
+You are a READER, not a SOLVER. Your only job is to read handwriting.
+- FORBIDDEN: Computing what the correct answer should be and writing it.
+- FORBIDDEN: Using the question text to infer what the student "probably" wrote.
+- FORBIDDEN: Filling in an answer because the space "looks like" it should have a number.
+- If you catch yourself thinking "the answer to this question is X, so the student 
+  probably wrote X" — STOP. That is hallucination. Output "" with confidence 0.
+
+### RULE 2 — ARABIC "I DON'T KNOW" PHRASES
+These phrases are VALID student answers. Read them exactly as written.
+Do NOT replace them with numbers or calculations:
+  "لا أستطيع" / "لا استطيع" / "لا أعرف" / "لا اعرف" / "ما أعرف"
+  "لا أدري" / "لا أعلم" / "je ne sais pas" / "I don't know"
+If you see any of these → extracted_text = the phrase, confidence_score = 95
+
+### RULE 3 — EMPTY OR BLANK ANSWERS  
+If the answer zone is empty, blank, or the student left it unanswered:
+  → extracted_text = "", confidence_score = 0
+Never fill a blank zone with what you think the answer should be.
+
+### RULE 4 — PRESERVE EXACTLY WHAT IS WRITTEN
+- If student wrote Arabic text → return Arabic text
+- If student wrote numbers → return numbers  
+- If student wrote a mix → return the mix
+- If student wrote the number in Arabic words (e.g. "خمسة آلاف") → return those words
+- NEVER convert Arabic words to digits or digits to Arabic words
+
+### RULE 5 — WHEN YOU ARE UNSURE
+If you genuinely cannot read the handwriting:
+  → extracted_text = "", confidence_score = 0 (better than hallucinating)
+A blank answer is infinitely better than a fabricated one.
 
 ## CONFIDENCE SCORING per answer (0–100):
-- 95–100: Crystal clear print or typed text
-- 80–94:  Neat handwriting, easily readable
-- 60–79:  Messy handwriting but decodable
-- 40–59:  Partially legible, some words guessed
-- 0–39:   Mostly illegible, high uncertainty
-
-## STUDENT IDENTIFICATION
-If the student's name or ID is visible on the paper, extract it.
+- 95–100: You can clearly see every character written
+- 80–94:  Handwriting readable with minor uncertainty
+- 60–79:  Messy but you can make it out
+- 40–59:  Partially legible
+- 0–39:   Cannot read it — return "" instead of guessing
+- 0:      Answer zone is empty OR you are not sure what is written
 
 ## OUTPUT FORMAT
 You MUST respond with ONLY valid JSON — no markdown, no explanation, no code blocks.
@@ -110,16 +134,14 @@ You MUST respond with ONLY valid JSON — no markdown, no explanation, no code b
   "answers": [
     {
       "question_number": 1,
-      "extracted_text": "The student's written answer exactly as written",
+      "extracted_text": "ONLY what the student wrote, nothing else",
       "confidence_score": 87.0
     }
   ],
   "overall_confidence": 82.5,
-  "student_name_detected": "John Smith",
+  "student_name_detected": null,
   "exam_id_detected": null
 }
-
-If a question has no visible answer area on this page, still include it with extracted_text: "" and confidence_score: 0.
 """
 
 

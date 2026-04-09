@@ -50,7 +50,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Students" value={stats?.totalStudents ?? 0} icon={Users} gradient="quiz" delay={0} delta={{ value: '12 new', positive: true }} subtitle="All classes" />
+        <StatCard title="Total Students" value={stats?.totalStudents ?? 0} icon={Users} gradient="quiz" delay={0} subtitle="All classes" />
         <StatCard title="Active Exams" value={stats?.totalExams ?? 0} icon={FileText} gradient="class" delay={0.05} subtitle="This semester" />
         <StatCard title="Pending Reviews" value={stats?.pendingValidations ?? 0} icon={AlertTriangle} gradient="red" delay={0.1} subtitle="Low confidence OCR" />
         <StatCard title="Avg Score" value={`${stats?.avgScore ?? 0}%`} icon={Award} gradient="teal" delay={0.15} delta={{ value: '3.2%', positive: true }} subtitle={`Pass rate: ${stats?.passRate ?? 0}%`} />
