@@ -6,9 +6,10 @@ Handles both exam extraction and student answer extraction.
 import json
 import re
 import structlog
+from io import BytesIO
 from typing import List, Optional
 
-import google.generativeai as genai
+from google import genai
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps, ImageStat
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 
@@ -19,17 +20,34 @@ from app.models.schemas import ExamOCRResponse, AnswerOCRResponse
 logger = structlog.get_logger()
 settings = get_settings()
 
-# Initialize Gemini
-genai.configure(api_key=settings.gemini_api_key)
+# Initialize Gemini client via environment-backed settings.
+client = genai.Client(
+    vertexai=settings.gemini_vertexai,
+    api_key=settings.gemini_api_key,
+)
 
 
 def _load_image(image_bytes: bytes) -> Image.Image:
     """Load image from bytes, convert to RGB."""
-    from io import BytesIO
     img = Image.open(BytesIO(image_bytes))
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
     return img
+
+
+def _pil_to_png_bytes(img: Image.Image) -> bytes:
+    """Serialize a PIL image into PNG bytes for Gemini content parts."""
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _part_from_image_bytes(image_bytes: bytes) -> genai.types.Part:
+    return genai.types.Part.from_bytes(data=image_bytes, mime_type="image/png")
+
+
+def _part_from_pil(img: Image.Image) -> genai.types.Part:
+    return _part_from_image_bytes(_pil_to_png_bytes(img))
 
 
 def _upscale_if_needed(img: Image.Image, min_width: int = 1600) -> Image.Image:
@@ -77,11 +95,11 @@ def _crop_answer_column(img: Image.Image) -> Image.Image:
     return img.crop((left, top, right, bottom))
 
 
-def _get_generation_config(temperature: float = 0.1, max_tokens: int = 8192) -> dict:
-    return {
-        "temperature": temperature,
-        "max_output_tokens": max_tokens,
-    }
+def _get_generation_config(temperature: float = 0.1, max_tokens: int = 8192) -> genai.types.GenerateContentConfig:
+    return genai.types.GenerateContentConfig(
+        temperature=temperature,
+        max_output_tokens=max_tokens,
+    )
 
 
 def _extract_json(text: str) -> str:
@@ -373,27 +391,26 @@ async def extract_exam_questions(
     """Extract structured questions and correct answers from corrected exam images."""
     logger.info("Starting exam OCR extraction", image_count=len(corrected_images))
 
-    model = genai.GenerativeModel(settings.gemini_model)
-
     parts = [EXAM_OCR_PROMPT]
     parts.append("\n\n## CORRECTED EXAM IMAGES:\n")
     for i, img_bytes in enumerate(corrected_images):
         img = _load_image(img_bytes)
         parts.append(f"[Corrected exam page {i + 1}]")
-        parts.append(img)
+        parts.append(_part_from_pil(img))
 
     if blank_images:
         parts.append("\n\n## BLANK EXAM IMAGES (for layout reference):\n")
         for i, img_bytes in enumerate(blank_images):
             img = _load_image(img_bytes)
             parts.append(f"[Blank exam page {i + 1}]")
-            parts.append(img)
+            parts.append(_part_from_pil(img))
 
     gen_config = _get_generation_config(temperature=0.1, max_tokens=8192)
 
-    response = model.generate_content(
-        parts,
-        generation_config=gen_config,
+    response = client.models.generate_content(
+        model=settings.gemini_model,
+        contents=parts,
+        config=gen_config,
     )
 
     raw_text = response.text
@@ -425,8 +442,6 @@ async def extract_student_answers(
     """Extract student's handwritten answers from their exam image."""
     logger.info("Starting student answer OCR", question_count=len(questions))
 
-    model = genai.GenerativeModel(settings.gemini_model)
-
     questions_json = json.dumps(
         [{"number": q["number"], "type": q.get("type", "short_answer")}
          for q in questions],
@@ -446,23 +461,24 @@ async def extract_student_answers(
 
     gen_config = _get_generation_config(temperature=0.05, max_tokens=8192)
 
-    response = model.generate_content(
-        [
+    response = client.models.generate_content(
+        model=settings.gemini_model,
+        contents=[
             prompt,
             "[Original color page]",
-            image_variants["original"],
+            _part_from_pil(image_variants["original"]),
             "[Answer-column crop only (primary focus)]",
-            _crop_answer_column(image_variants["original"]),
+            _part_from_pil(_crop_answer_column(image_variants["original"])),
             "[Enhanced grayscale page for handwriting clarity]",
-            image_variants["sharpened"],
+            _part_from_pil(image_variants["sharpened"]),
             "[Enhanced answer-column crop]",
-            _crop_answer_column(image_variants["sharpened"]),
+            _part_from_pil(_crop_answer_column(image_variants["sharpened"])),
             "[High-contrast binary page for faint strokes]",
-            image_variants["binary"],
+            _part_from_pil(image_variants["binary"]),
             "[Binary answer-column crop]",
-            _crop_answer_column(image_variants["binary"]),
+            _part_from_pil(_crop_answer_column(image_variants["binary"])),
         ],
-        generation_config=gen_config,
+        config=gen_config,
     )
 
     raw_text = response.text or ""

@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     # Gemini
     gemini_api_key: str
+    gemini_vertexai: bool = True
     gemini_model: str = "gemini-2.0-flash"
 
     # Ollama (Evaluation provider)

@@ -201,6 +201,7 @@ curl -X POST http://localhost:3000/api/auth/login \
 | Variable | Description |
 |---|---|
 | `GEMINI_API_KEY` | Google Gemini API key |
+| `GEMINI_VERTEXAI` | Enable Vertex mode for `google-genai` client (`true`/`false`, default `true`) |
 | `GEMINI_MODEL` | Gemini model name (`gemini-2.0-flash`) |
 | `OLLAMA_BASE_URL` | Ollama server URL (`http://localhost:11434`) |
 | `OLLAMA_MODEL` | Ollama model name (`llama3.2`) |
