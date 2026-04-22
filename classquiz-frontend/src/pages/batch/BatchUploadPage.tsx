@@ -44,12 +44,18 @@ function StatusDot({ status }: { status: string }) {
 }
 
 function canViewOCR(status: string) {
-  return ['ocr_done', 'validation_pending', 'validated', 'evaluating', 'evaluated', 'report_ready'].includes(status)
+  return ['ocr_done', 'validation_pending', 'validated', 'evaluating', 'evaluated', 'report_ready', 'failed'].includes(status)
+}
+
+function summarizeFailureReason(reason?: string) {
+  if (!reason) return 'Processing failed'
+  const compact = reason.trim().replace(/\s+/g, ' ')
+  return compact.length > 72 ? `${compact.slice(0, 72)}...` : compact
 }
 
 // ── Pipeline Row ──────────────────────────────────────────────────────────────
-function PipelineRow({ fileName, studentName, status, index, onViewOCR, onOpenReview }: {
-  fileName: string; studentName: string; status: string; index: number; onViewOCR: () => void; onOpenReview: () => void
+function PipelineRow({ fileName, studentName, status, failureReason, index, onViewOCR, onOpenReview }: {
+  fileName: string; studentName: string; status: string; failureReason?: string; index: number; onViewOCR: () => void; onOpenReview: () => void
 }) {
   const { percent, stage, color, bar } = getPipelineProgress(status)
   const viewEnabled = canViewOCR(status)
@@ -82,9 +88,19 @@ function PipelineRow({ fileName, studentName, status, index, onViewOCR, onOpenRe
           <span className="text-[10px] text-slate-500 w-8 text-right font-mono">{percent}%</span>
         </div>
       </div>
-      <div className="flex items-center gap-2 w-28 flex-shrink-0 justify-end">
-        <StatusDot status={status} />
-        <span className={`text-xs font-semibold ${color}`}>{stage}</span>
+      <div className="w-40 flex-shrink-0">
+        <div className="flex items-center gap-2 justify-end">
+          <StatusDot status={status} />
+          <span className={`text-xs font-semibold ${color}`}>{stage}</span>
+        </div>
+        {status === 'failed' && (
+          <p
+            className="mt-1 text-[10px] text-red-300 text-right truncate"
+            title={failureReason || 'Processing failed'}
+          >
+            {summarizeFailureReason(failureReason)}
+          </p>
+        )}
       </div>
       <div className="w-36 flex-shrink-0 flex justify-end gap-2">
         {reviewEnabled && (
@@ -314,7 +330,7 @@ function ExamDashboard({ examId, examTitle, onBack }: {
             <div className="w-36">File</div>
             <div className="w-32">Student</div>
             <div className="flex-1">Pipeline</div>
-            <div className="w-28 text-right">Status</div>
+            <div className="w-40 text-right">Status</div>
             <div className="w-36 text-right">OCR</div>
           </div>
           {studentExams.map((se: any, i: number) => {
@@ -326,6 +342,7 @@ function ExamDashboard({ examId, examTitle, onBack }: {
                 fileName={fileName}
                 studentName={name}
                 status={se.status}
+                failureReason={se.processingError}
                 index={i}
                 onViewOCR={() => setSelectedStudentExamId(se._id)}
                 onOpenReview={() => navigate(`/validation?studentExamId=${se._id}`)}
