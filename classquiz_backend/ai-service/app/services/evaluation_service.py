@@ -1,8 +1,3 @@
-"""
-Ollama Llama3.2 Evaluation Service
-Grades student answers with pedagogical feedback using Ollama.
-"""
-
 import json
 import structlog
 from typing import List

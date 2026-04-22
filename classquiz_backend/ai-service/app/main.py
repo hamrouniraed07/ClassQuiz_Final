@@ -1,8 +1,3 @@
-"""
-ClassQuiz AI Service
-====================
-FastAPI application handling OCR (Gemini) and Evaluation (Ollama Llama3.2).
-"""
 
 import structlog
 from contextlib import asynccontextmanager

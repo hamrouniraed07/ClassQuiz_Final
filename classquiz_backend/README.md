@@ -30,7 +30,7 @@ A production-ready, microservices backend for an AI-powered exam correction and 
 │  │     AI Service               │  Python + FastAPI                     │
 │  │  Port 8000 (internal only)   │                                       │
 │  │                              │  • POST /ocr/extract-exam             │
-│  │  Gemini 2.0 Flash            │    → Extract questions from exam      │
+│  │  Gemini 2.5 Flash            │    → Extract questions from exam      │
   │  Ollama                      │  • POST /ocr/extract-answers          │
 │  │                              │    → Extract student handwriting      │
 │  │                              │  • POST /evaluate/grade               │

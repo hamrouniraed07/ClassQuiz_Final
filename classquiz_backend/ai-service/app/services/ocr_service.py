@@ -1,8 +1,3 @@
-"""
-Gemini Vision OCR Service
-Handles both exam extraction and student answer extraction.
-"""
-
 import json
 import re
 import structlog

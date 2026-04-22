@@ -1,19 +1,4 @@
-"""
-ClassQuiz AI Prompts
-====================
-These prompts are carefully engineered for:
-  1. EXAM_OCR_PROMPT       — Extract questions + correct answers from corrected exam images
-  2. ANSWER_OCR_PROMPT     — Extract student handwritten answers from a student exam image
-  3. EVALUATION_SYSTEM     — System prompt for Ollama Llama3.2 grader
-  4. build_evaluation_user — Per-exam user prompt builder
-"""
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. EXAM OCR PROMPT
-#    Used with: Gemini 2.5 Vision
-#    Input:     Corrected exam image(s), optional blank exam images
-#    Output:    Structured JSON with questions and correct answers
-# ─────────────────────────────────────────────────────────────────────────────
+#EXAM OCR PROMPT
 
 EXAM_OCR_PROMPT = """
 You are an expert educational document analyzer specializing in extracting structured information from exam papers.
@@ -67,12 +52,8 @@ You MUST respond with ONLY valid JSON — no markdown, no explanation, no code b
 """
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. ANSWER OCR PROMPT
-#    Used with: Gemini 2.0 Vision
-#    Input:     Student exam image + list of questions (for context)
-#    Output:    Structured JSON with extracted student answers
-# ─────────────────────────────────────────────────────────────────────────────
+
+#ANSWER OCR PROMPT
 
 ANSWER_OCR_PROMPT_TEMPLATE = """
 You are an expert OCR system specialized in reading student handwritten exam answers.
@@ -145,11 +126,9 @@ You MUST respond with ONLY valid JSON — no markdown, no explanation, no code b
 """
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. EVALUATION SYSTEM PROMPT
-#    Used with: Ollama Llama3.2
-#    Role:      Sets the grader's persona and grading philosophy
-# ─────────────────────────────────────────────────────────────────────────────
+
+# EVALUATION SYSTEM PROMPT
+
 
 EVALUATION_SYSTEM_PROMPT = """
 You are ClassQuiz — an expert, fair, and pedagogically-aware exam grader for primary school students (Grades 1–6).

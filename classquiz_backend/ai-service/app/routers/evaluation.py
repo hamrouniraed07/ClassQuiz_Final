@@ -1,7 +1,3 @@
-"""
-Evaluation Router
-Endpoint for grading student answers with Ollama Llama3.2.
-"""
 
 import structlog
 from fastapi import APIRouter, HTTPException

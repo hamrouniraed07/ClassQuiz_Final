@@ -1,8 +1,3 @@
-"""
-OCR Router
-Endpoints for extracting exam questions and student answers via Gemini 2.0.
-"""
-
 import json
 import structlog
 from typing import List, Optional

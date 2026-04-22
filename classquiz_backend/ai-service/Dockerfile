@@ -1,4 +1,3 @@
-# ── Stage 1: Builder ─────────────────────────────────────────────────────────
 FROM python:3.11-slim AS builder
 
 WORKDIR /app
@@ -14,21 +13,16 @@ RUN pip install --upgrade pip \
     && pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 
-# ── Stage 2: Production Image ─────────────────────────────────────────────────
 FROM python:3.11-slim AS production
 
-# Security: run as non-root user
 RUN addgroup --gid 1001 appgroup && adduser --uid 1001 --gid 1001 --disabled-password --gecos "" appuser
 
 WORKDIR /app
 
-# Copy installed packages from builder
 COPY --from=builder /install /usr/local
 
-# Copy application code
 COPY app/ ./app/
 
-# Set ownership
 RUN chown -R appuser:appgroup /app
 
 USER appuser
