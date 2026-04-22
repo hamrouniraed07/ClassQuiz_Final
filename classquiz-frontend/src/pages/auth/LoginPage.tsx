@@ -79,7 +79,7 @@ export default function LoginPage() {
               <span className="text-grad-brand">Grading Platform</span>
             </h1>
             <p className="text-slate-400 text-base leading-relaxed max-w-sm">
-              Upload, process, and grade student exams automatically with Gemini Vision OCR and GPT-4o evaluation.
+              Upload, process, and grade student exams automatically with Gemini Vision OCR and Llama 3.2 evaluation.
             </p>
           </motion.div>
         </div>
