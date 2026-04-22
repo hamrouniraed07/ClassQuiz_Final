@@ -2,10 +2,9 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { success, unauthorized, badRequest } = require('../utils/response');
 
-/**
- * POST /api/auth/login
- * Single admin authentication
- */
+
+ /* POST /api/auth/login */
+
 const login = async (req, res) => {
   const { username, password } = req.body;
 
@@ -43,10 +42,8 @@ const login = async (req, res) => {
   }, 'Login successful');
 };
 
-/**
- * GET /api/auth/me
- * Return current admin info from token
- */
+
+/* GET /api/auth/me*/
 const me = async (req, res) => {
   return success(res, { user: req.user }, 'Authenticated');
 };

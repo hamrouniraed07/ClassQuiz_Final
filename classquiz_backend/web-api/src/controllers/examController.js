@@ -41,7 +41,7 @@ function getMimeType(filePath) {
   return { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.tiff': 'image/tiff', '.tif': 'image/tiff' }[ext] || 'image/jpeg';
 }
 
-// ── CREATE EXAM (no auto-OCR) ─────────────────────────────────────────────────
+// CREATE EXAM 
 const createExam = async (req, res) => {
   const { title, subject, classLevel } = req.body;
   if (subject && !SUBJECTS.includes(subject)) return badRequest(res, `Invalid subject. Must be one of: ${SUBJECTS.join(', ')}`);
@@ -60,7 +60,7 @@ const createExam = async (req, res) => {
   return created(res, exam, 'Exam created. Use POST /exams/:id/ocr to extract questions.');
 };
 
-// ── OCR: EXTRACT ONLY (no DB save) ───────────────────────────────────────────
+// OCR: EXTRACT ONLY (no DB save)
 function buildOCRForm(exam) {
   const form = new FormData();
   for (const img of exam.correctedExamImages) {
@@ -132,7 +132,7 @@ const triggerOCR = async (req, res) => {
   }
 };
 
-// ── CONFIRM EXAM (admin saves validated questions) ────────────────────────────
+// CONFIRM EXAM (admin saves validated questions)
 const confirmExam = async (req, res) => {
   const { questions } = req.body;
   if (!questions || !Array.isArray(questions) || !questions.length) return badRequest(res, 'questions array is required');

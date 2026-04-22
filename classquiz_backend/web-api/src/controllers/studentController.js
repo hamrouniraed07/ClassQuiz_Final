@@ -29,12 +29,16 @@ const getStudents = async (req, res) => {
   return success(res, { students, pagination: { total, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(total / parseInt(limit)) } });
 };
 
+
+
 const getStudent = async (req, res) => {
   const student = await Student.findById(req.params.id).populate('examCount');
   if (!student) return notFound(res, 'Student not found');
   const recentExams = await StudentExam.find({ student: student._id }).populate('exam', 'title subject classLevel').sort({ createdAt: -1 }).limit(5).select('totalScore percentage grade status createdAt');
   return success(res, { student, recentExams });
 };
+
+
 
 const updateStudent = async (req, res) => {
   const { name, code, classLevel, isActive } = req.body;
@@ -114,4 +118,10 @@ const importCSV = async (req, res) => {
   return success(res, { summary: { totalRows: rows.length, successCount: insertedCount, failedCount: errors.length }, errors: errors.slice(0, 50) }, `CSV: ${insertedCount} created, ${errors.length} failed`);
 };
 
-module.exports = { createStudent, getStudents, getStudent, updateStudent, deleteStudent, getStudentPerformance, importCSV };
+module.exports = { createStudent,
+   getStudents,
+    getStudent, 
+    updateStudent, 
+    deleteStudent, 
+    getStudentPerformance,
+     importCSV };
