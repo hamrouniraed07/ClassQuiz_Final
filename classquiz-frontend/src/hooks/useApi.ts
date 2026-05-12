@@ -147,7 +147,7 @@ export const useConfirmExam = () => {
 }
 
 // Student Exams
-export const useStudentExams = (params?: { examId?: string; studentId?: string; status?: string; page?: number; limit?: number }) =>
+export const useStudentExams = (params?: { examId?: string; studentId?: string; status?: string; page?: number; limit?: number; includeAnswers?: boolean }) =>
   useQuery({ queryKey: QK.studentExams(params), queryFn: async () => { const { data } = await api.get('/student-exams', { params }); return data.data as { studentExams: StudentExam[]; pagination: any } } })
 export const useStudentExam = (id: string) =>
   useQuery({ queryKey: QK.studentExam(id), queryFn: async () => { const { data } = await api.get(`/student-exams/${id}`); return data.data as StudentExam }, enabled: !!id })

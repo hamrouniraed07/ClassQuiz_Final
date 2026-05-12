@@ -254,7 +254,8 @@ async function evaluateWithAI(studentExam) {
  * GET /api/student-exams
  */
 const getStudentExams = async (req, res) => {
-  const { examId, studentId, status, page = 1, limit = 20 } = req.query;
+  const { examId, studentId, status, page = 1, limit = 20, includeAnswers } = req.query;
+  const shouldIncludeAnswers = includeAnswers === 'true' || includeAnswers === '1';
 
   const filter = {};
   if (examId) filter.exam = examId;
@@ -263,12 +264,12 @@ const getStudentExams = async (req, res) => {
 
   const [items, total] = await Promise.all([
     StudentExam.find(filter)
-      .populate('student', 'name code class')
-      .populate('exam', 'title subject class')
+      .populate('student', 'name code class classLevel')
+      .populate('exam', 'title subject class classLevel')
       .sort({ createdAt: -1 })
       .skip((parseInt(page) - 1) * parseInt(limit))
       .limit(parseInt(limit))
-      .select('-answers'), // Omit answers in list
+      .select(shouldIncludeAnswers ? '' : '-answers'),
     StudentExam.countDocuments(filter),
   ]);
 
