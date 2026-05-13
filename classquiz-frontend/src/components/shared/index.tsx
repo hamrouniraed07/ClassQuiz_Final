@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 import { LucideIcon, Loader2 } from 'lucide-react'
 import { cn, getStatusBadge } from '@/lib/utils'
 
-// ── Stat Card ─────────────────────────────────────────────────────────────────
+//   Stat Card    
 interface StatCardProps {
   title: string; value: string | number; subtitle?: string
   icon: LucideIcon; gradient?: 'class' | 'quiz' | 'teal' | 'red'
@@ -48,7 +48,7 @@ export function StatCard({ title, value, subtitle, icon: Icon, gradient = 'class
   )
 }
 
-// ── Page Header ───────────────────────────────────────────────────────────────
+//   Page Header    
 interface PageHeaderProps {
   title: string; subtitle?: string
   action?: React.ReactNode
@@ -65,13 +65,13 @@ export function PageHeader({ title, subtitle, action }: PageHeaderProps) {
   )
 }
 
-// ── Status Badge ──────────────────────────────────────────────────────────────
+//   Status Badge    
 export function StatusBadge({ status }: { status: string }) {
   const { label, cls } = getStatusBadge(status)
   return <span className={cls}>{label}</span>
 }
 
-// ── Loading Spinner ───────────────────────────────────────────────────────────
+//   Loading Spinner   
 export function LoadingSpinner({ size = 'md', className }: { size?: 'sm' | 'md' | 'lg'; className?: string }) {
   const s = { sm: 'w-4 h-4', md: 'w-6 h-6', lg: 'w-10 h-10' }
   return <Loader2 className={cn('animate-spin text-amber-400', s[size], className)} />
@@ -88,7 +88,7 @@ export function LoadingPage() {
   )
 }
 
-// ── Empty State ───────────────────────────────────────────────────────────────
+//   Empty State    
 interface EmptyStateProps {
   icon: LucideIcon; title: string; description?: string; action?: React.ReactNode
 }
@@ -109,13 +109,13 @@ export function EmptyState({ icon: Icon, title, description, action }: EmptyStat
   )
 }
 
-// ── Confidence Badge ──────────────────────────────────────────────────────────
+//   Confidence Badge   
 export function ConfidenceBadge({ score }: { score: number }) {
   const cls = score >= 70 ? 'badge-green' : score >= 50 ? 'badge-amber' : 'badge-red'
   return <span className={cls}>{score.toFixed(0)}%</span>
 }
 
-// ── Grade Badge ───────────────────────────────────────────────────────────────
+//   Grade Badge    
 export function GradeBadge({ grade }: { grade?: string }) {
   const map: Record<string, string> = {
     A: 'badge-green', B: 'badge-sky', C: 'badge-amber', D: 'badge-red', F: 'badge-red'
@@ -123,7 +123,7 @@ export function GradeBadge({ grade }: { grade?: string }) {
   return <span className={map[grade ?? ''] ?? 'badge-sky'}>{grade ?? 'N/A'}</span>
 }
 
-// ── Section Card ──────────────────────────────────────────────────────────────
+//   Section Card    
 export function SectionCard({ title, children, className, action }: {
   title?: string; children: React.ReactNode; className?: string; action?: React.ReactNode
 }) {

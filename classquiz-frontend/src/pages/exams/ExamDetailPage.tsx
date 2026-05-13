@@ -11,7 +11,7 @@ import { CLASS_LEVEL_LABELS, SUBJECT_META } from '@/constants/domain'
 import type { Question, Exam } from '@/types'
 import type { ClassLevel, Subject } from '@/constants/domain'
 
-// ── Question Card (read-only) ─────────────────────────────────────────────────
+//   Question Card (read-only)      
 function QuestionCard({ question, index }: { question: Question; index: number }) {
   return (
     <motion.div
@@ -38,7 +38,7 @@ function QuestionCard({ question, index }: { question: Question; index: number }
   )
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+//   Main Page    
 export default function ExamDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()

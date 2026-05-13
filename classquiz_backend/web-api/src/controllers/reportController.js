@@ -204,7 +204,7 @@ async function buildPDF(studentExam) {
 
     doc.pipe(stream);
 
-    // ── Header ──────────────────────────────────────────────────────────────
+    //   Header    
     doc
       .fillColor('#1a237e')
       .fontSize(22)
@@ -220,7 +220,7 @@ async function buildPDF(studentExam) {
       .stroke()
       .moveDown(1);
 
-    // ── Student Info ─────────────────────────────────────────────────────────
+    //   Student Info   
     doc.fillColor('#000000').fontSize(12).font('Helvetica-Bold').text('Student Information');
     doc.moveDown(0.3);
 
@@ -245,7 +245,7 @@ async function buildPDF(studentExam) {
 
     doc.moveDown(1);
 
-    // ── Score Summary ────────────────────────────────────────────────────────
+    //   Score Summary   
     doc.font('Helvetica-Bold').fontSize(14).text('Score Summary');
     doc.moveDown(0.3);
 
@@ -264,7 +264,7 @@ async function buildPDF(studentExam) {
 
     doc.fillColor('#000').moveDown(1);
 
-    // ── Per-Question Breakdown ───────────────────────────────────────────────
+    //   Per-Question Breakdown     
     doc.font('Helvetica-Bold').fontSize(14).text('Answer Breakdown').moveDown(0.5);
 
     studentExam.answers.forEach((answer) => {
@@ -313,7 +313,7 @@ async function buildPDF(studentExam) {
         .moveDown(1);
     });
 
-    // ── Footer ───────────────────────────────────────────────────────────────
+    //   Footer    
     doc
       .fillColor('#9e9e9e')
       .fontSize(8)

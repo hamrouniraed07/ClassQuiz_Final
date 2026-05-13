@@ -6,14 +6,14 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// ── Request interceptor: attach JWT ──────────────────────────────────────────
+//   Request interceptor: attach JWT     
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('cq_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 
-// ── Response interceptor: handle 401 ─────────────────────────────────────────
+//   Response interceptor: handle 401     
 api.interceptors.response.use(
   (res) => res,
   (err) => {

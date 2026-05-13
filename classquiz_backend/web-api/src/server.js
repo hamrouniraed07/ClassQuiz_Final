@@ -12,7 +12,6 @@ const connectDB = require('./config/database');
 const logger = require('./utils/logger');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 
-// Route imports
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const studentRoutes = require('./routes/students');
@@ -23,7 +22,7 @@ const reportRoutes = require('./routes/reports');
 
 const app = express();
 
-// ── Security ──────────────────────────────────────────────────────────────────
+ 
 app.use(helmet());
 app.use(cors({
   origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
@@ -31,7 +30,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// ── Rate Limiting ─────────────────────────────────────────────────────────────
+//   Rate Limiting   
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
@@ -41,19 +40,18 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// ── Body Parsing ──────────────────────────────────────────────────────────────
+//   Body Parsing    
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// ── Logging ───────────────────────────────────────────────────────────────────
+//   Logging    
 app.use(
   morgan('combined', {
     stream: { write: (msg) => logger.info(msg.trim()) },
     skip: (req) => req.url === '/health',
   })
 );
-
-// ── Static Files (reports download) ──────────────────────────────────────────
+    
 app.use(
   '/reports',
   express.static(path.join(process.env.UPLOAD_DIR || './uploads', 'reports'))
@@ -64,8 +62,7 @@ app.use(
   '/api/uploads',
   express.static(path.join(process.env.UPLOAD_DIR || './uploads'))
 );
-
-// ── Health Check ──────────────────────────────────────────────────────────────
+    
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -75,7 +72,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// ── API Routes ────────────────────────────────────────────────────────────────
+  
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/students', studentRoutes);
@@ -84,11 +81,10 @@ app.use('/api/student-exams', studentExamRoutes);
 app.use('/api/validations', validationRoutes);
 app.use('/api/reports', reportRoutes);
 
-// ── Error Handling ────────────────────────────────────────────────────────────
+
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-// ── Start Server ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 
 const start = async () => {
@@ -100,7 +96,7 @@ const start = async () => {
 
 start();
 
-// ── Graceful Shutdown ─────────────────────────────────────────────────────────
+//   Graceful Shutdown   
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received. Shutting down gracefully...');
   process.exit(0);

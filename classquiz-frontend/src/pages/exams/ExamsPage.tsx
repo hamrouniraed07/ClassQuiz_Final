@@ -8,7 +8,7 @@ import { CLASS_LEVELS, CLASS_LEVEL_LABELS, SUBJECTS, SUBJECT_META } from '@/cons
 import type { ClassLevel, Subject } from '@/constants/domain'
 import type { Exam } from '@/types'
 
-// ── Edit Exam Modal ───────────────────────────────────────────────────────────
+//   Edit Exam Modal   
 function EditExamModal({ exam, onClose }: { exam: Exam; onClose: () => void }) {
   const [form, setForm] = useState({
     title: exam.title,
@@ -76,7 +76,7 @@ function EditExamModal({ exam, onClose }: { exam: Exam; onClose: () => void }) {
   )
 }
 
-// ── Delete Confirmation Modal ─────────────────────────────────────────────────
+//   Delete Confirmation Modal      
 function DeleteExamModal({ exam, onClose, onConfirm, isPending }: {
   exam: Exam; onClose: () => void; onConfirm: () => void; isPending: boolean
 }) {
@@ -106,7 +106,7 @@ function DeleteExamModal({ exam, onClose, onConfirm, isPending }: {
   )
 }
 
-// ── Exam Card ─────────────────────────────────────────────────────────────────
+//   Exam Card    
 function ExamCard({ exam, index, onEdit, onDelete }: {
   exam: Exam; index: number; onEdit: () => void; onDelete: () => void
 }) {
@@ -159,7 +159,7 @@ function ExamCard({ exam, index, onEdit, onDelete }: {
   )
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+//   Main Page    
 export default function ExamsPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()

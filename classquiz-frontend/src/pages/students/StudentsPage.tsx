@@ -8,7 +8,7 @@ import { CLASS_LEVELS, CLASS_LEVEL_LABELS } from '@/constants/domain'
 import type { ClassLevel } from '@/constants/domain'
 import type { Student, CSVImportResult } from '@/types'
 
-// ── Add Student Modal ─────────────────────────────────────────────────────────
+//   Add Student Modal   
 function AddStudentModal({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState<{ name: string; code: string; classLevel: ClassLevel }>({ name: '', code: '', classLevel: '1ere' })
   const [error, setError] = useState('')
@@ -77,7 +77,7 @@ function AddStudentModal({ onClose }: { onClose: () => void }) {
   )
 }
 
-// ── Edit Student Modal ────────────────────────────────────────────────────────
+//   Edit Student Modal   
 function EditStudentModal({ student, onClose }: { student: Student; onClose: () => void }) {
   const [form, setForm] = useState({
     name: student.name,
@@ -138,7 +138,7 @@ function EditStudentModal({ student, onClose }: { student: Student; onClose: () 
   )
 }
 
-// ── Delete Confirmation Modal ─────────────────────────────────────────────────
+//   Delete Confirmation Modal      
 function DeleteConfirmModal({ student, onClose, onConfirm, isPending }: { student: Student; onClose: () => void; onConfirm: () => void; isPending: boolean }) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -165,7 +165,7 @@ function DeleteConfirmModal({ student, onClose, onConfirm, isPending }: { studen
   )
 }
 
-// ── CSV Import Modal ──────────────────────────────────────────────────────────
+//   CSV Import Modal   
 function ImportCSVModal({ onClose }: { onClose: () => void }) {
   const [file, setFile] = useState<File | null>(null)
   const [result, setResult] = useState<CSVImportResult | null>(null)
@@ -271,7 +271,7 @@ function ImportCSVModal({ onClose }: { onClose: () => void }) {
   )
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+//   Main Page    
 export default function StudentsPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [showCSVModal, setShowCSVModal] = useState(false)

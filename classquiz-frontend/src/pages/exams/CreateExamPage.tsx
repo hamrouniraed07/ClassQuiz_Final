@@ -42,7 +42,7 @@ function Stepper({ current }: { current: number }) {
   )
 }
 
-// ── Multi-File Upload Area ────────────────────────────────────────────────────
+//   Multi-File Upload Area     
 function FileUploadArea({
   label, sublabel, required, files, onAdd, onRemove, color = 'teal',
 }: {
@@ -134,7 +134,7 @@ function FileUploadArea({
   )
 }
 
-// ── Step 1: Upload ────────────────────────────────────────────────────────────
+//   Step 1: Upload   
 function UploadStep({ onNext }: { onNext: (examId: string) => void }) {
   const [title, setTitle] = useState('')
   const [subject, setSubject] = useState<Subject>(SUBJECTS[0])
@@ -224,7 +224,7 @@ function UploadStep({ onNext }: { onNext: (examId: string) => void }) {
   )
 }
 
-// ── Step 2: Review ────────────────────────────────────────────────────────────
+//   Step 2: Review   
 function ReviewStep({
   isLoading, ocrError, questions, setQuestions, onBack, onConfirm, isConfirming,
 }: {
@@ -324,7 +324,7 @@ function ReviewStep({
   )
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+//   Main Page    
 export default function CreateExamPage() {
   const navigate = useNavigate()
   const [step, setStep] = useState(1)

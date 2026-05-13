@@ -172,11 +172,10 @@ You MUST respond with ONLY valid JSON — no markdown, no explanation, no code b
 """
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+   
 # 4. EVALUATION USER PROMPT BUILDER
 #    Generates the per-exam grading request sent to Ollama Llama3.2
-# ─────────────────────────────────────────────────────────────────────────────
-
+   
 def build_evaluation_user_prompt(questions: list, student_answers: list) -> str:
     """
     Build the user-turn prompt for Ollama Llama3.2 evaluation.

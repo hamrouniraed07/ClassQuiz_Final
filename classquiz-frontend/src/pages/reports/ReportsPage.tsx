@@ -30,7 +30,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   )
 }
 
-// ── Exam Selector ─────────────────────────────────────────────────────────────
+//   Exam Selector   
 function ExamSelector({ value, onChange }: { value: string; onChange: (id: string) => void }) {
   const [open, setOpen] = useState(false)
   const { data } = useExams({ status: 'active' })
@@ -67,7 +67,7 @@ function ExamSelector({ value, onChange }: { value: string; onChange: (id: strin
   )
 }
 
-// ── Student Performance Row ───────────────────────────────────────────────────
+//   Student Performance Row      
 function StudentRow({ se, index, onPreview, onDownload, onGenerated }: { se: ReportStudentExam; index: number; onPreview: (id: string) => void; onDownload: (id: string) => void; onGenerated: () => void }) {
   const [generating, setGenerating] = useState(false)
   const generateReport = useGenerateReport()
@@ -152,7 +152,7 @@ function StudentRow({ se, index, onPreview, onDownload, onGenerated }: { se: Rep
   )
 }
 
-// ── Main Reports Page ─────────────────────────────────────────────────────────
+//   Main Reports Page   
 export default function ReportsPage() {
   const [examId, setExamId] = useState('')
   const { data: reportData, isLoading: reportLoading, refetch: refetchReport } = useExamReport(examId)

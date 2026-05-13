@@ -3,8 +3,7 @@ from typing import Optional, List
 from enum import Enum
 
 
-# ── Shared ────────────────────────────────────────────────────────────────────
-
+#   Shared    
 class QuestionType(str, Enum):
     multiple_choice = "multiple_choice"
     short_answer = "short_answer"
@@ -23,8 +22,7 @@ class MistakeType(str, Enum):
     no_answer = "no_answer"
 
 
-# ── OCR Models ────────────────────────────────────────────────────────────────
-
+#   OCR Models    
 class ExtractedQuestion(BaseModel):
     number: int
     text: str
@@ -62,8 +60,7 @@ class AnswerOCRResponse(BaseModel):
     exam_id_detected: Optional[str] = None
 
 
-# ── Evaluation Models ─────────────────────────────────────────────────────────
-
+#   Evaluation Models   
 class StudentAnswerInput(BaseModel):
     question_number: int
     answer_text: str

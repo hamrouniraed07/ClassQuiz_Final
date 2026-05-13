@@ -155,7 +155,7 @@ const confirmExam = async (req, res) => {
   return success(res, updated, 'Exam confirmed and activated');
 };
 
-// ── CRUD ──────────────────────────────────────────────────────────────────────
+//   CRUD    
 const getExams = async (req, res) => {
   const { classLevel, status, page = 1, limit = 20 } = req.query;
   const filter = {};

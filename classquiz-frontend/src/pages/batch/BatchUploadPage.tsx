@@ -13,7 +13,7 @@ import type { ClassLevel } from '@/constants/domain'
 
 interface FileMapping { file: File; studentId: string; studentName?: string }
 
-// ── Pipeline helpers ──────────────────────────────────────────────────────────
+//   Pipeline helpers   
 function getPipelineProgress(status: string) {
   switch (status) {
     case 'uploaded':          return { percent: 10, stage: 'Queued',       color: 'text-slate-400', bar: 'bg-slate-500' }
@@ -53,7 +53,7 @@ function summarizeFailureReason(reason?: string) {
   return compact.length > 72 ? `${compact.slice(0, 72)}...` : compact
 }
 
-// ── Pipeline Row ──────────────────────────────────────────────────────────────
+//   Pipeline Row    
 function PipelineRow({ fileName, studentName, status, failureReason, index, onViewOCR, onOpenReview }: {
   fileName: string; studentName: string; status: string; failureReason?: string; index: number; onViewOCR: () => void; onOpenReview: () => void
 }) {
@@ -215,7 +215,7 @@ function OCRResultModal({ studentExamId, onClose }: { studentExamId: string; onC
   )
 }
 
-// ── Exam Dashboard (shows pipeline + option to upload more) ───────────────────
+//   Exam Dashboard (shows pipeline + option to upload more)   
 function ExamDashboard({ examId, examTitle, onBack }: {
   examId: string; examTitle: string; onBack: () => void
 }) {
@@ -448,7 +448,7 @@ function ExamDashboard({ examId, examTitle, onBack }: {
   )
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+//   Main Page    
 export default function BatchUploadPage() {
   const [selectedExamId, setSelectedExamId] = useState<string | null>(null)
   const [selectedExamTitle, setSelectedExamTitle] = useState('')

@@ -34,7 +34,7 @@ function buildStudentExamImageUrl(imagePath?: string | null) {
   return `/api/uploads/${relativePath}`
 }
 
-// ── Subject Card ──────────────────────────────────────────────────────────────
+//   Subject Card    
 function SubjectCard({ subject, count, onClick, delay }: {
   subject: typeof SUBJECT_LIST[0]; count: number; onClick: () => void; delay: number
 }) {
@@ -65,7 +65,7 @@ function SubjectCard({ subject, count, onClick, delay }: {
   )
 }
 
-// ── Review Panel ──────────────────────────────────────────────────────────────
+//   Review Panel    
 function ReviewPanel({ validationId, onNext, onBack }: {
   validationId: string; onNext: () => void; onBack: () => void
 }) {
@@ -234,7 +234,7 @@ function ReviewPanel({ validationId, onNext, onBack }: {
   )
 }
 
-// ── Main Validation Page ──────────────────────────────────────────────────────
+//   Main Validation Page   
 export default function ValidationPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null)
@@ -327,7 +327,7 @@ export default function ValidationPage() {
       />
 
       <AnimatePresence mode="wait">
-        {/* ── Subject Selection View ── */}
+        {/*   Subject Selection View   */}
         {!selectedValidationId && (
           <motion.div key="subjects" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             {/* Stats row */}
@@ -434,7 +434,7 @@ export default function ValidationPage() {
           </motion.div>
         )}
 
-        {/* ── Review View ── */}
+        {/*   Review View   */}
         {selectedValidationId && (
           <ReviewPanel
             key={selectedValidationId}

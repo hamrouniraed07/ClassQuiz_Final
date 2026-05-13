@@ -7,13 +7,13 @@ A production-ready, microservices backend for an AI-powered exam correction and 
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
+┌   ┐
 │                          ClassQuiz System                               │
 │                                                                         │
 │  Admin/Client                                                           │
 │      │                                                                  │
 │      ▼                                                                  │
-│  ┌──────────────────────────────┐                                       │
+│  ┌   ┐                                       │
 │  │     Web API Service          │  Node.js + Express + MongoDB          │
 │  │  Port 3000                   │                                       │
 │  │                              │  • JWT Authentication (multi-admin)   │
@@ -24,10 +24,10 @@ A production-ready, microservices backend for an AI-powered exam correction and 
 │  │  /api/student-exams          │  • Validation workflow                │
 │  │  /api/validations            │  • Evaluation trigger                 │
 │  │  /api/reports                │  • PDF report generation              │
-│  └──────────┬───────────────────┘                                       │
+│  └  ┬  ┘                                       │
 │             │  Internal HTTP                                            │
 │             ▼                                                           │
-│  ┌──────────────────────────────┐                                       │
+│  ┌   ┐                                       │
 │  │     AI Service               │  Python + FastAPI                     │
 │  │  Port 8000 (internal only)   │                                       │
 │  │                              │  • POST /ocr/extract-exam             │
@@ -36,9 +36,9 @@ A production-ready, microservices backend for an AI-powered exam correction and 
 │  │                              │    → Extract student handwriting      │
 │  │                              │  • POST /evaluate/grade               │
 │  │                              │    → Grade + pedagogical feedback     │
-│  └──────────────────────────────┘                                       │
+│  └   ┘                                       │
 │                                                                         │
-│  ┌──────────────────────────────┐                                       │
+│  ┌   ┐                                       │
 │  │     MongoDB                  │  Port 27017 (internal only)           │
 │  │                              │                                       │
 │  │  Collections: 
@@ -48,8 +48,8 @@ A production-ready, microservices backend for an AI-powered exam correction and 
 │  │  • studentexams              │                                       │
 │  │  • validations               │                                       │
 │  │  • batchuploads              │                                       │
-│  └──────────────────────────────┘                                       │
-└─────────────────────────────────────────────────────────────────────────┘
+│  └   ┘                                       │
+└   ┘
 ```
 
 ---
@@ -59,15 +59,15 @@ A production-ready, microservices backend for an AI-powered exam correction and 
 ```
 1. Admin uploads corrected exam → Gemini OCR extracts questions/answers
                                                     │
-2. Admin uploads student exams (single or batch) ──►│
+2. Admin uploads student exams (single or batch)  ►│
                                                     │
 3. Gemini OCR extracts student answers              │
                                                     ▼
-4. Confidence check ──── < 70% ──────► Validation Queue
+4. Confidence check   < 70%  ► Validation Queue
          │                                    │ Admin corrects OCR
          │ ≥ 70%                              │
          ▼                                    ▼
-5. Ollama Llama3.2 grades answers ◄───────────────┘
+5. Ollama Llama3.2 grades answers ◄  ┘
          │
          ▼
 6. Scores + feedback stored → PDF report generated
@@ -79,68 +79,68 @@ A production-ready, microservices backend for an AI-powered exam correction and 
 
 ```
 classquiz/
-├── docker-compose.yml
-├── mongo-init.js
-├── API_CONTRACTS.http
+├  docker-compose.yml
+├  mongo-init.js
+├  API_CONTRACTS.http
 │
-├── web-api/                        # Node.js Express API
-│   ├── Dockerfile
-│   ├── package.json
-│   ├── .env.example
-│   └── src/
-│       ├── server.js               # App entry point
-│       ├── config/
-│       │   └── database.js         # MongoDB connection
-│       ├── models/
-│       │   ├── Student.js
-│       │   ├── Exam.js
-│       │   ├── StudentExam.js
-│       │   ├── Validation.js
-│       │   ├── BatchUpload.js
-│       │   └── Admin.js
-│       ├── controllers/
-│       │   ├── adminController.js
-│       │   ├── authController.js
-│       │   ├── studentController.js
-│       │   ├── examController.js
-│       │   ├── studentExamController.js
-│       │   ├── validationController.js
-│       │   └── reportController.js
-│       ├── routes/
-│       │   ├── admin.js
-│       │   ├── auth.js
-│       │   ├── students.js
-│       │   ├── exams.js
-│       │   ├── studentExams.js
-│       │   ├── validations.js
-│       │   └── reports.js
-│       ├── middleware/
-│       │   ├── adminAuth.js    # Admin JWT protection
-│       │   ├── auth.js             # JWT middleware
-│       │   ├── upload.js           # Multer config
-│       │   └── errorHandler.js     # Global error handler
-│       └── utils/
-│           ├── logger.js           # Winston logger
-│           ├── response.js         # API response helpers
-│           └── aiClient.js         # HTTP client for AI service
+├  web-api/                        # Node.js Express API
+│   ├  Dockerfile
+│   ├  package.json
+│   ├  .env.example
+│   └  src/
+│       ├  server.js               # App entry point
+│       ├  config/
+│       │   └  database.js         # MongoDB connection
+│       ├  models/
+│       │   ├  Student.js
+│       │   ├  Exam.js
+│       │   ├  StudentExam.js
+│       │   ├  Validation.js
+│       │   ├  BatchUpload.js
+│       │   └  Admin.js
+│       ├  controllers/
+│       │   ├  adminController.js
+│       │   ├  authController.js
+│       │   ├  studentController.js
+│       │   ├  examController.js
+│       │   ├  studentExamController.js
+│       │   ├  validationController.js
+│       │   └  reportController.js
+│       ├  routes/
+│       │   ├  admin.js
+│       │   ├  auth.js
+│       │   ├  students.js
+│       │   ├  exams.js
+│       │   ├  studentExams.js
+│       │   ├  validations.js
+│       │   └  reports.js
+│       ├  middleware/
+│       │   ├  adminAuth.js    # Admin JWT protection
+│       │   ├  auth.js             # JWT middleware
+│       │   ├  upload.js           # Multer config
+│       │   └  errorHandler.js     # Global error handler
+│       └  utils/
+│           ├  logger.js           # Winston logger
+│           ├  response.js         # API response helpers
+│           └  aiClient.js         # HTTP client for AI service
 │
-└── ai-service/                     # Python FastAPI AI Service
-    ├── Dockerfile
-    ├── requirements.txt
-    ├── .env.example
-    └── app/
-        ├── main.py                 # FastAPI app
-        ├── config.py               # Settings (pydantic)
-        ├── models/
-        │   └── schemas.py          # Pydantic request/response models
-        ├── prompts/
-        │   └── prompts.py          # OCR + evaluation prompts ⭐
-        ├── services/
-        │   ├── ocr_service.py      # Gemini 2.0 integration
-        │   └── evaluation_service.py # Ollama Llama3.2 integration
-        └── routers/
-            ├── ocr.py              # /ocr endpoints
-            └── evaluation.py       # /evaluate endpoints
+└  ai-service/                     # Python FastAPI AI Service
+    ├  Dockerfile
+    ├  requirements.txt
+    ├  .env.example
+    └  app/
+        ├  main.py                 # FastAPI app
+        ├  config.py               # Settings (pydantic)
+        ├  models/
+        │   └  schemas.py          # Pydantic request/response models
+        ├  prompts/
+        │   └  prompts.py          # OCR + evaluation prompts ⭐
+        ├  services/
+        │   ├  ocr_service.py      # Gemini 2.0 integration
+        │   └  evaluation_service.py # Ollama Llama3.2 integration
+        └  routers/
+            ├  ocr.py              # /ocr endpoints
+            └  evaluation.py       # /evaluate endpoints
 ```
 
 ---

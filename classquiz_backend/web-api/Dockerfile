@@ -1,4 +1,4 @@
-# ── Stage 1: Dependencies ─────────────────────────────────────────────────────
+#   Stage 1: Dependencies  
 FROM node:20-alpine AS deps
 
 WORKDIR /app
@@ -7,7 +7,7 @@ COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 
-# ── Stage 2: Production Image ─────────────────────────────────────────────────
+#   Stage 2: Production Image 
 FROM node:20-alpine AS production
 
 # Install Unicode fonts (Arabic support for PDF rendering)

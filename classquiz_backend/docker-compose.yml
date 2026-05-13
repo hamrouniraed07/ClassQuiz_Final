@@ -1,11 +1,5 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# ClassQuiz — Production Docker Compose
-# Services: web-api · ai-service · mongo · mongo-express (dev only)
-# ─────────────────────────────────────────────────────────────────────────────
-
 services:
-
-  # ── MongoDB ─────────────────────────────────────────────────────────────────
+  #   MongoDB 
   mongo:
     image: mongo:7.0
     container_name: classquiz-mongo
@@ -31,7 +25,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # ── AI Service (Python / FastAPI) ────────────────────────────────────────────
+  #   AI Service (Python / FastAPI) 
   ai-service:
     build:
       context: ./ai-service
@@ -65,7 +59,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # ── Web API (Node.js / Express) ───────────────────────────────────────────────
+  #   Web API (Node.js / Express) 
   web-api:
     build:
       context: ./web-api
@@ -104,7 +98,7 @@ services:
         max-size: "10m"
         max-file: "5"
 
-  # ── Mongo Express (Dev / Debug only — remove in production) ──────────────────
+  #   Mongo Express (Dev / Debug only — remove in production) 
   mongo-express:
     image: mongo-express:1.0.2
     container_name: classquiz-mongo-express
@@ -124,14 +118,14 @@ services:
       - mongo
 
 
-# ─── Networks ──────────────────────────────────────────────────────────────────
+#   Networks 
 networks:
   classquiz-internal:
     driver: bridge
     internal: false  # Allow external access for web-api port 3000
 
 
-# ─── Volumes ───────────────────────────────────────────────────────────────────
+#   Volumes 
 volumes:
   mongo_data:
     driver: local

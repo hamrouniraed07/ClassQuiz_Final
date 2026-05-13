@@ -66,7 +66,6 @@ async function callAIService(endpoint, options = {}) {
 }
 
 async function sendFormData(endpoint, formData) {
-  // node-fetch automatically reads form-data streams and sets correct Content-Type with boundary
   return callAIService(endpoint, {
     method: 'POST',
     body: formData,
