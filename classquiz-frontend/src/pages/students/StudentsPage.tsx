@@ -12,44 +12,66 @@ import type { Student, CSVImportResult } from '@/types'
 function AddStudentModal({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState<{ name: string; code: string; classLevel: ClassLevel }>({ name: '', code: '', classLevel: '1ere' })
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState(false)
   const create = useCreateStudent()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setError('')
-    try { await create.mutateAsync(form); onClose() }
+    try {
+      await create.mutateAsync(form)
+      setSuccess(true)
+      setTimeout(onClose, 1500)
+    }
     catch (err: any) { setError(err.response?.data?.message || 'Failed to create student') }
   }
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-      onClick={e => e.target === e.currentTarget && onClose()}>
+      onClick={e => e.target === e.currentTarget && !success && onClose()}>
       <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="glass-card w-full max-w-md p-6">
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-base font-bold text-white">Add New Student</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/[0.07] text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">Full Name</label>
-            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="input-dark" placeholder="Ahmed Ben Ali" required />
+        {success ? (
+          <div className="text-center py-8">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+              className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-4"
+            >
+              <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+            </motion.div>
+            <h3 className="text-lg font-bold text-white mb-2">Success!</h3>
+            <p className="text-sm text-slate-300">Student created successfully</p>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">Student Code</label>
-            <input value={form.code} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} className="input-dark font-mono" placeholder="STU-2024-001" required />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">Class Level</label>
-            <select value={form.classLevel} onChange={e => setForm({ ...form, classLevel: e.target.value as ClassLevel })} className="input-dark">
-              {CLASS_LEVELS.map(cl => <option key={cl} value={cl}>{CLASS_LEVEL_LABELS[cl]}</option>)}
-            </select>
-          </div>
-          {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">{error}</p>}
-          <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancel</button>
-            <button type="submit" disabled={create.isPending} className="btn-primary flex-1">{create.isPending ? 'Creating…' : 'Add Student'}</button>
-          </div>
-        </form>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-base font-bold text-white">Add New Student</h3>
+              <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/[0.07] text-slate-400 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">Full Name</label>
+                <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="input-dark" placeholder="Ahmed Ben Ali" required />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">Student Code</label>
+                <input value={form.code} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} className="input-dark font-mono" placeholder="STU-2024-001" required />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">Class Level</label>
+                <select value={form.classLevel} onChange={e => setForm({ ...form, classLevel: e.target.value as ClassLevel })} className="input-dark">
+                  {CLASS_LEVELS.map(cl => <option key={cl} value={cl}>{CLASS_LEVEL_LABELS[cl]}</option>)}
+                </select>
+              </div>
+              {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">{error}</p>}
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancel</button>
+                <button type="submit" disabled={create.isPending} className="btn-primary flex-1">{create.isPending ? 'Creating…' : 'Add Student'}</button>
+              </div>
+            </form>
+          </>
+        )}
       </motion.div>
     </motion.div>
   )

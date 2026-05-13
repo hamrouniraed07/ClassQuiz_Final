@@ -14,6 +14,7 @@ const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 
 // Route imports
 const authRoutes = require('./routes/auth');
+const adminRoutes = require('./routes/admin');
 const studentRoutes = require('./routes/students');
 const examRoutes = require('./routes/exams');
 const studentExamRoutes = require('./routes/studentExams');
@@ -76,6 +77,7 @@ app.get('/health', (req, res) => {
 
 // ── API Routes ────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/exams', examRoutes);
 app.use('/api/student-exams', studentExamRoutes);

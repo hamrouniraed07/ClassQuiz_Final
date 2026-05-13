@@ -296,7 +296,7 @@ const getStudentExam = async (req, res) => {
  * Upload multiple student exams at once
  */
 const batchUploadExams = async (req, res) => {
-  const { examId, mappings } = req.body; // mappings: JSON string [{ studentId, fileName }]
+  const { examId, mappings } = req.body; 
   const files = req.files || [];
 
   if (!files.length) return badRequest(res, 'No files uploaded');
@@ -330,6 +330,7 @@ const batchUploadExams = async (req, res) => {
     totalCount: batchItems.length,
     pendingCount: batchItems.length,
     status: 'created',
+    uploadedBy: req.user.id,
   });
 
   // Process batch asynchronously

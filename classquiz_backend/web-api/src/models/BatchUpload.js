@@ -44,7 +44,11 @@ const batchUploadSchema = new mongoose.Schema(
       default: 'created',
     },
 
-    uploadedBy: { type: String, default: 'admin' },
+    uploadedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Admin',
+      required: true,
+    },
     completedAt: { type: Date, default: null },
   },
   { timestamps: true }

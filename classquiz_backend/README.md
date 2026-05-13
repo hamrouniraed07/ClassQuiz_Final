@@ -16,8 +16,9 @@ A production-ready, microservices backend for an AI-powered exam correction and 
 │  ┌──────────────────────────────┐                                       │
 │  │     Web API Service          │  Node.js + Express + MongoDB          │
 │  │  Port 3000                   │                                       │
-│  │                              │  • JWT Authentication (single admin)  │
+│  │                              │  • JWT Authentication (multi-admin)   │
 │  │  /api/auth                   │  • Student CRUD                       │
+│  │  /api/admin                  │  • Admin auth + dashboard             │
 │  │  /api/students               │  • Exam management                    │
 │  │  /api/exams                  │  • OCR orchestration                  │
 │  │  /api/student-exams          │  • Validation workflow                │
@@ -94,8 +95,10 @@ classquiz/
 │       │   ├── Exam.js
 │       │   ├── StudentExam.js
 │       │   ├── Validation.js
-│       │   └── BatchUpload.js
+│       │   ├── BatchUpload.js
+│       │   └── Admin.js
 │       ├── controllers/
+│       │   ├── adminController.js
 │       │   ├── authController.js
 │       │   ├── studentController.js
 │       │   ├── examController.js
@@ -103,6 +106,7 @@ classquiz/
 │       │   ├── validationController.js
 │       │   └── reportController.js
 │       ├── routes/
+│       │   ├── admin.js
 │       │   ├── auth.js
 │       │   ├── students.js
 │       │   ├── exams.js
@@ -110,6 +114,7 @@ classquiz/
 │       │   ├── validations.js
 │       │   └── reports.js
 │       ├── middleware/
+│       │   ├── adminAuth.js    # Admin JWT protection
 │       │   ├── auth.js             # JWT middleware
 │       │   ├── upload.js           # Multer config
 │       │   └── errorHandler.js     # Global error handler
@@ -149,7 +154,7 @@ cd classquiz
 
 # Configure Web API
 cp web-api/.env.example web-api/.env
-# Edit: JWT_SECRET, ADMIN_PASSWORD
+# Edit: JWT_SECRET, MONGODB_URI, AI_SERVICE_URL if needed
 
 # Configure AI Service
 cp ai-service/.env.example ai-service/.env
@@ -178,7 +183,40 @@ curl http://localhost:8000/health  # from within Docker network
 ```bash
 curl -X POST http://localhost:3000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"Admin@ClassQuiz2024!"}'
+  -d '{"email":"admin@classquiz.com","password":"Admin@ClassQuiz2024!"}'
+```
+
+### 5. Admin API Examples
+
+#### Bootstrap the first admin
+
+```http
+POST /api/admin/register
+Content-Type: application/json
+
+{
+  "email": "admin@classquiz.com",
+  "password": "Admin@ClassQuiz2024!"
+}
+```
+
+#### Login an admin
+
+```http
+POST /api/admin/login
+Content-Type: application/json
+
+{
+  "email": "admin@classquiz.com",
+  "password": "Admin@ClassQuiz2024!"
+}
+```
+
+#### Call the protected dashboard route
+
+```http
+GET /api/admin/dashboard
+Authorization: Bearer <token>
 ```
 
 ---
@@ -190,8 +228,6 @@ curl -X POST http://localhost:3000/api/auth/login \
 | Variable | Description | Default |
 |---|---|---|
 | `JWT_SECRET` | JWT signing secret | (required) |
-| `ADMIN_USERNAME` | Admin login username | `admin` |
-| `ADMIN_PASSWORD` | Admin login password | (required) |
 | `MONGODB_URI` | MongoDB connection string | `mongodb://mongo:27017/classquiz` |
 | `AI_SERVICE_URL` | AI service base URL | `http://ai-service:8000` |
 | `OCR_CONFIDENCE_THRESHOLD` | Min confidence before validation | `70` |
@@ -218,6 +254,6 @@ curl -X POST http://localhost:3000/api/auth/login \
 
 4. **Retry with Tenacity** — Both Gemini and Ollama calls retry on JSON parse errors (transient model output issues) up to 3 times.
 
-5. **Single Admin Architecture** — EdTech platform for classrooms; JWT-based single-admin design avoids complexity of multi-user RBAC.
+5. **Multi-Admin Architecture** — Admins are stored in MongoDB with hashed passwords and JWT-based route protection.
 
 6. **Separation of AI and Business Logic** — The AI service has zero knowledge of MongoDB; it only receives images/text and returns structured JSON. All business state lives in the web-api.

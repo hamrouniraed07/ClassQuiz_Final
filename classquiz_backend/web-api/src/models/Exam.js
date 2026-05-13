@@ -75,7 +75,11 @@ const examSchema = new mongoose.Schema(
     ocrConfidence: { type: Number, min: 0, max: 100, default: null },
     ocrNotes: { type: String, default: null },
     ocrProcessedAt: Date,
-    createdBy: { type: String, default: 'admin' },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Admin',
+      required: true,
+    },
   },
   {
     timestamps: true,

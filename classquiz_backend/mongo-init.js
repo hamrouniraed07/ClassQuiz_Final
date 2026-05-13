@@ -5,6 +5,9 @@ db = db.getSiblingDB("classquiz");
 
 print("ClassQuiz: Initializing MongoDB...");
 
+// ── Admins ───────────────────────────────────────────────────────────────────
+db.admins.createIndex({ email: 1 }, { unique: true });
+
 // ── Students ──────────────────────────────────────────────────────────────────
 db.students.createIndex({ code: 1 }, { unique: true });
 db.students.createIndex({ class: 1 });

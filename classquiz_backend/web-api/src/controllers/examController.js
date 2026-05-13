@@ -55,6 +55,7 @@ const createExam = async (req, res) => {
     title, subject, classLevel, totalScore: 0, questions: [], status: 'draft',
     correctedExamImages: correctedFiles.map((f) => ({ path: f.path, originalName: f.originalname })),
     blankExamImages: blankFiles.map((f) => ({ path: f.path, originalName: f.originalname })),
+    createdBy: req.user.id,
   });
 
   return created(res, exam, 'Exam created. Use POST /exams/:id/ocr to extract questions.');

@@ -1,11 +1,12 @@
 const jwt = require('jsonwebtoken');
+const Admin = require('../models/Admin');
 const { unauthorized } = require('../utils/response');
 
 /**
  * JWT Authentication middleware.
- * Verifies the Bearer token in the Authorization header.
+ * Verifies the Bearer token in the Authorization header and resolves the Admin document.
  */
-const authenticate = (req, res, next) => {
+const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -16,7 +17,21 @@ const authenticate = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
+    const adminId = decoded.sub || decoded.id;
+    const admin = adminId ? await Admin.findById(adminId).select('+password') : null;
+
+    if (!admin) {
+      return unauthorized(res, 'Invalid token');
+    }
+
+    req.admin = admin;
+    req.user = {
+      id: admin._id.toString(),
+      email: admin.email,
+      username: admin.email,
+      role: admin.role,
+      createdAt: admin.createdAt,
+    };
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
@@ -26,4 +41,12 @@ const authenticate = (req, res, next) => {
   }
 };
 
-module.exports = { authenticate };
+const requireAdmin = (req, res, next) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return unauthorized(res, 'Admin access required');
+  }
+
+  return next();
+};
+
+module.exports = { authenticate, requireAdmin };
