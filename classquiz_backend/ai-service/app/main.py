@@ -46,16 +46,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── CORS ──────────────────────────────────────────────────────────────────────
+# ── CORS 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://web-api:3000"],  # Only internal service
+    allow_origins=["http://web-api:3000"],  
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
 
 
-# ── Request Logging Middleware ────────────────────────────────────────────────
+# ── Request Logging Middleware 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     logger.info(
@@ -73,7 +73,7 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-# ── Global Exception Handler ──────────────────────────────────────────────────
+# ── Global Exception Handler 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error("Unhandled exception", path=request.url.path, error=str(exc))
@@ -83,7 +83,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# ── Health Check ──────────────────────────────────────────────────────────────
+# ── Health Check 
 @app.get("/health", tags=["Health"])
 async def health():
     return {
@@ -101,6 +101,6 @@ async def health():
     }
 
 
-# ── Routers ───────────────────────────────────────────────────────────────────
+# ── Routers 
 app.include_router(ocr.router)
 app.include_router(evaluation.router)

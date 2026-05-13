@@ -41,7 +41,8 @@ A production-ready, microservices backend for an AI-powered exam correction and 
 │  ┌──────────────────────────────┐                                       │
 │  │     MongoDB                  │  Port 27017 (internal only)           │
 │  │                              │                                       │
-│  │  Collections:                │                                       │
+│  │  Collections: 
+|                 │                                       │
 │  │  • students                  │                                       │
 │  │  • exams                     │                                       │
 │  │  • studentexams              │                                       │
