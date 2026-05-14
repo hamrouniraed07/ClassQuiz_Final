@@ -2,7 +2,8 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Users, FileText, Upload, CheckSquare,
-  BarChart3, LogOut, ChevronRight, GraduationCap, Menu, X
+  BarChart3, LogOut, ChevronRight, GraduationCap, Menu, X,
+  Phone
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useValidationStats } from '@/hooks/useApi'
@@ -15,6 +16,7 @@ const nav = [
   { to: '/batch',       label: 'Batch Upload',      icon: Upload          },
   { to: '/validation',  label: 'Validation',        icon: CheckSquare,    badge: true },
   { to: '/reports',     label: 'Reports',           icon: BarChart3       },
+  { to: '/whatsapp',     label: 'whatsapp',           icon: Phone       },
 ]
 
 interface SidebarProps { collapsed: boolean; setCollapsed: (v: boolean) => void }

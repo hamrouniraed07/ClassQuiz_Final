@@ -1,5 +1,5 @@
 services:
-  #   MongoDB 
+  # ── MongoDB 
   mongo:
     image: mongo:7.0
     container_name: classquiz-mongo
@@ -19,13 +19,8 @@ services:
       timeout: 10s
       retries: 5
       start_period: 20s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
-  #   AI Service (Python / FastAPI) 
+  # ── AI Service (Python / FastAPI) 
   ai-service:
     build:
       context: ./ai-service
@@ -53,13 +48,8 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
-  #   Web API (Node.js / Express) 
+  # ── Web API (Node.js / Express) 
   web-api:
     build:
       context: ./web-api
@@ -92,19 +82,50 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
 
-  #   Mongo Express (Dev / Debug only — remove in production) 
+  # ── WhatsApp Agent 
+  whatsapp-agent:
+    build:
+      context: ./whatsapp-agent
+      dockerfile: Dockerfile
+      target: production
+    container_name: classquiz-whatsapp-agent
+    restart: unless-stopped
+    env_file:
+      - ./whatsapp-agent/.env
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - MONGODB_URI=mongodb://mongo:27017/classquiz
+      - CLASSQUIZ_API_URL=http://web-api:3000
+    ports:
+      - "4000:4000"   # exposé pour recevoir les webhooks Meta
+    volumes:
+      # Partage le même volume que web-api
+      # L'agent écrit dans uploads/incoming/ → ClassQuiz lit depuis uploads/
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
+    networks:
+      - classquiz-internal
+    depends_on:
+      mongo:
+        condition: service_healthy
+      web-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Mongo Express (Dev) 
   mongo-express:
     image: mongo-express:1.0.2
     container_name: classquiz-mongo-express
     restart: unless-stopped
     profiles:
-      - dev   # Only starts with: docker compose --profile dev up
+      - dev
     environment:
       ME_CONFIG_MONGODB_SERVER: mongo
       ME_CONFIG_MONGODB_PORT: 27017
@@ -117,19 +138,15 @@ services:
     depends_on:
       - mongo
 
-
-#   Networks 
 networks:
   classquiz-internal:
     driver: bridge
-    internal: false  # Allow external access for web-api port 3000
+    internal: false
 
-
-#   Volumes 
 volumes:
   mongo_data:
     driver: local
   uploads_data:
-    driver: local
+    driver: local   # partagé entre web-api et whatsapp-agent
   logs_data:
     driver: local

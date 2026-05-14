@@ -13,6 +13,7 @@ import ExamDetailPage from '@/pages/exams/ExamDetailPage'
 import BatchUploadPage from '@/pages/batch/BatchUploadPage'
 import ValidationPage from '@/pages/validation/ValidationPage'
 import ReportsPage from '@/pages/reports/ReportsPage'
+import WhatsappPage from './pages/whatsapp/WhatsappPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,6 +42,7 @@ export default function App() {
               <Route path="/batch"      element={<BatchUploadPage />} />
               <Route path="/validation" element={<ValidationPage />} />
               <Route path="/reports"    element={<ReportsPage />} />
+              <Route path="/whatsapp"    element={<WhatsappPage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
