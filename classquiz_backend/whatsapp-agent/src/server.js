@@ -1,5 +1,6 @@
 /**
- * src/server.js — Point d'entrée
+ * src/server.js — VERSION MISE À JOUR
+ * Ajout de la route /session
  */
 require('dotenv').config()
 require('express-async-errors')
@@ -19,17 +20,15 @@ const app  = express()
 const PORT = process.env.PORT || 4000
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
-// Autoriser le frontend (localhost:5173 en dev, localhost en prod Docker)
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost,http://localhost:80').split(',')
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Autoriser les requêtes sans origine (curl, Postman, health checks)
     if (!origin) return callback(null, true)
     if (allowedOrigins.includes(origin)) return callback(null, true)
     callback(new Error(`CORS: origine non autorisée: ${origin}`))
   },
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'x-agent-key', 'Authorization'],
   credentials: true,
 }))
@@ -46,15 +45,30 @@ fs.mkdirSync(path.join(process.cwd(), 'logs'),               { recursive: true }
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/webhook', require('./routes/webhook'))
 app.use('/admin',   require('./routes/admin'))
+app.use('/session', require('./routes/session'))   // ← NOUVEAU
 
 app.get('/health', async (req, res) => {
   const mongoOk = mongoose.connection.readyState === 1
+
+  // Inclure la session active dans le health check
+  let activeSession = null
+  try {
+    const { getActiveSession } = require('./services/pipeline')
+    activeSession = await getActiveSession()
+  } catch {}
+
   res.json({
     status:  mongoOk ? 'ok' : 'degraded',
     service: 'classquiz-whatsapp-agent',
     version: '2.0.0',
     uptime:  Math.floor(process.uptime()),
     mongo:   mongoOk ? 'connected' : 'disconnected',
+    activeExam: activeSession ? {
+      examId:    activeSession.examId,
+      examTitle: activeSession.examTitle,
+      received:  activeSession.receivedCount,
+      indexed:   activeSession.indexedCount,
+    } : null,
   })
 })
 
@@ -71,7 +85,6 @@ async function start() {
   })
   logger.info('[Server] ✓ MongoDB connecté')
 
-  // Cron : dispatch des batches expirés (toutes les 2 min)
   cron.schedule('*/2 * * * *', () => {
     pipeline.checkExpiredBatches().catch(err =>
       logger.error(`[Cron] checkExpiredBatches échoué: ${err.message}`)
@@ -79,7 +92,6 @@ async function start() {
   })
   logger.info('[Server] ✓ Cron batch expiry démarré (*/2 min)')
 
-  // Cron : dispatch planifié quotidien
   const [h, m] = (process.env.BATCH_SCHEDULE_TIME || '08:00').split(':')
   cron.schedule(`${m} ${h} * * *`, async () => {
     logger.info('[Cron] Dispatch planifié quotidien')
@@ -90,13 +102,14 @@ async function start() {
       )
     }
   })
-  logger.info(`[Server] ✓ Cron dispatch planifié à ${h}:${m}`)
 
   app.listen(PORT, () => {
-    logger.info(`[Server] ✓ WhatsApp Agent démarré sur port ${PORT}`)
-    logger.info(`[Server]   POST /webhook  — réception images WhatsApp`)
-    logger.info(`[Server]   GET  /admin    — monitoring & dispatch manuel`)
-    logger.info(`[Server]   GET  /health   — santé du service`)
+    logger.info(`[Server] ✓ WhatsApp Agent v2.1 démarré sur port ${PORT}`)
+    logger.info(`[Server]   POST   /webhook         — réception images WhatsApp`)
+    logger.info(`[Server]   GET    /admin            — monitoring & dispatch`)
+    logger.info(`[Server]   GET    /session          — session exam active`)
+    logger.info(`[Server]   POST   /session/activate — activer un examen`)
+    logger.info(`[Server]   DELETE /session/deactivate — désactiver`)
     logger.info(`[Server]   CORS activé pour: ${allowedOrigins.join(', ')}`)
   })
 }

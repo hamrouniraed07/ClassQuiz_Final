@@ -1,10 +1,8 @@
 /**
- * src/services/classquizClient.js
+ * src/services/classquizClient.js — VERSION MISE À JOUR
  *
- * Client HTTP vers le web-api ClassQuiz (port 3000, réseau Docker interne).
- * Deux opérations :
- *   1. resolveStudent(code)  → trouve l'étudiant par son code
- *   2. dispatchBatch(items)  → POST /api/student-exams/batch
+ * Fix : copie les images vers uploads/student-exams/ avant dispatch
+ * pour qu'elles soient accessibles par web-api via le volume partagé.
  */
 const axios    = require('axios')
 const fs       = require('fs')
@@ -17,57 +15,45 @@ const api = axios.create({
   timeout: 15000,
 })
 
-// Injecter le token admin automatiquement
 api.interceptors.request.use(cfg => {
   cfg.headers.Authorization = `Bearer ${process.env.CLASSQUIZ_API_TOKEN}`
   return cfg
 })
 
-/**
- * Cherche un étudiant par son code exact dans ClassQuiz.
- *
- * @param {string} code - Ex: "STU-042"
- * @returns {Promise<{_id: string, name: string, code: string, classLevel: string}|null>}
- */
 async function resolveStudent(code) {
-  logger.info(`[DEBUG] Searching for student: ${code}`)
+  logger.info(`[ClassQuiz] Recherche étudiant: ${code}`)
   try {
     const { data } = await api.get('/api/students', {
       params: { search: code, limit: 200 },
     })
 
     const students = data?.data?.students || []
-    logger.info(`[DEBUG] Found ${students.length} students in response`)
-
-    // Correspondance exacte (insensible à la casse)
     const match = students.find(s => s.code.toUpperCase() === code.toUpperCase())
-    
+
     if (match) {
-      logger.info(`[DEBUG] ✓ Student found: ${match.code} - ${match.name}`)
+      logger.info(`[ClassQuiz] ✓ Étudiant trouvé: ${match.name} (${match._id})`)
     } else {
-      logger.info(`[DEBUG] ✗ No exact match. Sample codes: ${students.slice(0, 5).map(s => s.code).join(',')}`)
+      logger.warn(`[ClassQuiz] ✗ Aucun étudiant avec code: ${code}`)
     }
-    
+
     return match || null
   } catch (err) {
-    logger.error(`[DEBUG] resolveStudent error: ${err.message}`)
+    logger.error(`[ClassQuiz] resolveStudent error: ${err.message}`)
     throw err
   }
 }
 
-/**
- * Dispatche un batch de copies vers ClassQuiz.
- * Construit le multipart/form-data attendu par POST /api/student-exams/batch.
- *
- * @param {string} examId - ObjectId de l'exam ClassQuiz
- * @param {Array<{submission: object, filePath: string, fileName: string}>} items
- * @returns {Promise<{_id: string, status: string, totalCount: number}>}
- */
 async function dispatchBatch(examId, items) {
   const form     = new FormData()
   const mappings = []
 
   form.append('examId', examId)
+
+  // ── Dossier de destination partagé avec web-api ───────────────────────────
+  // uploads/ est monté comme volume partagé entre whatsapp-agent et web-api
+  // web-api lit depuis uploads/student-exams/
+  const sharedDir = path.join(process.cwd(), 'uploads', 'student-exams')
+  fs.mkdirSync(sharedDir, { recursive: true })
 
   for (const item of items) {
     if (!fs.existsSync(item.filePath)) {
@@ -75,9 +61,15 @@ async function dispatchBatch(examId, items) {
       continue
     }
 
-    const fileName = path.basename(item.filePath)
+    // ── Copier vers le dossier partagé ──────────────────────────────────────
+    const ext      = path.extname(item.filePath) || '.jpg'
+    const fileName = `wa_${Date.now()}_${path.basename(item.filePath)}`
+    const destPath = path.join(sharedDir, fileName)
 
-    form.append('examImages', fs.createReadStream(item.filePath), {
+    fs.copyFileSync(item.filePath, destPath)
+    logger.info(`[ClassQuiz] Image copiée: ${item.filePath} → ${destPath}`)
+
+    form.append('examImages', fs.createReadStream(destPath), {
       filename:    fileName,
       contentType: item.submission.imageMimeType || 'image/jpeg',
     })
@@ -99,19 +91,15 @@ async function dispatchBatch(examId, items) {
       ...form.getHeaders(),
       Authorization: `Bearer ${process.env.CLASSQUIZ_API_TOKEN}`,
     },
-    timeout: 120000,        // 2 min pour les gros batches
+    timeout: 120000,
     maxContentLength: Infinity,
     maxBodyLength:    Infinity,
   })
 
-  logger.info(`[ClassQuiz] Batch accepté: ${data.data._id} (${mappings.length} copies)`)
+  logger.info(`[ClassQuiz] ✅ Batch accepté: ${data.data._id} (${mappings.length} copies)`)
   return data.data
 }
 
-/**
- * Vérifie que le token JWT est valide (appelé au démarrage).
- * @returns {Promise<boolean>}
- */
 async function healthCheck() {
   try {
     await api.get('/health')
