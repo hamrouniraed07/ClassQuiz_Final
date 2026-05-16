@@ -1,26 +1,28 @@
 /**
- * src/services/pipeline.js  — VERSION MISE À JOUR
+ * src/services/pipeline.js
  *
- * Changement principal :
- *   AVANT → examId lu depuis process.env.DEFAULT_EXAM_ID (fixe)
- *   APRÈS → examId lu depuis la session active choisie par l'admin en dashboard
+ * WORKFLOW MANUEL :
+ *   Message reçu → code extrait → étudiant résolu → image téléchargée
+ *   → statut "student_found" → STOP (l'admin assigne depuis le dashboard)
  *
- * Si aucune session active → message d'erreur au parent + STOP
+ *   L'admin choisit l'examen + batch depuis WhatsappPage
+ *   → PATCH /admin/submissions/:id/assign → statut "queued"
+ *   → Dispatch manuel depuis le dashboard → OCR + correction
  */
 
-const logger          = require('../utils/logger')
-const Submission      = require('../models/Submission')
-const Batch           = require('../models/Batch')
+const logger            = require('../utils/logger')
+const Submission        = require('../models/Submission')
+const Batch             = require('../models/Batch')
 const ActiveExamSession = require('../models/ActiveExamSession')
 const { parseCaption, isValidCodeFormat } = require('./codeParser')
-const whatsapp        = require('./whatsappClient')
-const classquiz       = require('./classquizClient')
+const whatsapp          = require('./whatsappClient')
+const classquiz         = require('./classquizClient')
 
 const BATCH_MAX_SIZE     = parseInt(process.env.BATCH_MAX_SIZE)         || 30
 const BATCH_MAX_WAIT_MIN = parseInt(process.env.BATCH_MAX_WAIT_MINUTES) || 15
 
 // ══════════════════════════════════════════════════════════════════
-// NOUVEAU — Récupère la session active depuis MongoDB
+// Session active
 // ══════════════════════════════════════════════════════════════════
 async function getActiveSession() {
   return ActiveExamSession.findOne({ isActive: true }).sort({ activatedAt: -1 })
@@ -34,7 +36,7 @@ async function handleIncomingPhoto(msg) {
 
   logger.info(`[Pipeline] ▶ Nouveau message de ${senderPhone} | caption: "${caption || ''}"`)
 
-  // ── Créer l'enregistrement ───────────────────────────────────────
+  // ── Créer l'enregistrement ────────────────────────────────────────────
   let sub
   try {
     sub = await Submission.create({
@@ -55,7 +57,7 @@ async function handleIncomingPhoto(msg) {
   }
 
   // ════════════════════════════════════════════════════════════════
-  // ÉTAPE 1 — Vérifier qu'une session est active (NOUVEAU)
+  // ÉTAPE 1 — Vérifier qu'une session est active
   // ════════════════════════════════════════════════════════════════
   const session = await getActiveSession()
 
@@ -70,10 +72,7 @@ async function handleIncomingPhoto(msg) {
     return
   }
 
-  const examId = session.examId
-  logger.info(`[Pipeline] Session active: "${session.examTitle}" (${examId})`)
-
-  // Incrémenter le compteur de réception
+  logger.info(`[Pipeline] Session active: "${session.examTitle}" (${session.examId})`)
   await ActiveExamSession.findByIdAndUpdate(session._id, { $inc: { receivedCount: 1 } })
 
   // ════════════════════════════════════════════════════════════════
@@ -98,7 +97,6 @@ async function handleIncomingPhoto(msg) {
   }
 
   sub.extractedCode = code
-  sub.examId        = examId
   sub.status        = 'code_extracted'
   await sub.save()
   logger.info(`[Pipeline] ✓ Code extrait: ${code}`)
@@ -146,46 +144,22 @@ async function handleIncomingPhoto(msg) {
   }
 
   sub.localImagePath = imageInfo.filePath
+  sub.status         = 'student_found'  // reste student_found → l'admin assigne depuis le dashboard
   await sub.save()
   logger.info(`[Pipeline] ✓ Image stockée: ${imageInfo.fileName}`)
 
   // ════════════════════════════════════════════════════════════════
-  // ÉTAPE 5 — Mise en queue (batch)
+  // FIN — Notifier l'admin (pas le parent, pas d'auto-enqueue)
+  // La soumission est maintenant visible dans le dashboard WhatsApp
+  // L'admin choisit l'examen et le batch manuellement
   // ════════════════════════════════════════════════════════════════
-  try {
-    const batch = await enqueue(sub)
-
-    sub.batchId = batch._id
-    sub.status  = 'queued'
-    await sub.save()
-
-    // Incrémenter le compteur indexé
-    await ActiveExamSession.findByIdAndUpdate(session._id, { $inc: { indexedCount: 1 } })
-
-    logger.info(
-      `[Pipeline] ✓ Copie de ${student.name} → batch ${batch._id} (${batch.count}/${BATCH_MAX_SIZE}) | examen: "${session.examTitle}"`
-    )
-
-    // SMS confirmation au parent avec le nom de l'examen
-    await whatsapp.sendSuccessWithExam(senderPhone, student.name, session.examTitle)
-
-    // Dispatch automatique si taille max atteinte
-    if (batch.count >= BATCH_MAX_SIZE) {
-      logger.info(`[Pipeline] Taille max atteinte → dispatch automatique`)
-      dispatch(batch._id, 'size').catch(err =>
-        logger.error(`[Pipeline] Auto-dispatch échoué: ${err.message}`)
-      )
-    }
-
-  } catch (err) {
-    logger.error(`[Pipeline] ✗ Mise en queue échouée: ${err.message}`)
-    await fail(sub, 'dispatch_failed', err.message)
-    await ActiveExamSession.findByIdAndUpdate(session._id, { $inc: { failedCount: 1 } })
-  }
+  logger.info(
+    `[Pipeline] ✅ Copie de ${student.name} prête pour assignation manuelle | exam: "${session.examTitle}"`
+  )
 }
 
 // ══════════════════════════════════════════════════════════════════
-// MISE EN QUEUE
+// MISE EN QUEUE (appelée par PATCH /admin/submissions/:id/assign)
 // ══════════════════════════════════════════════════════════════════
 async function enqueue(sub) {
   let batch = await Batch.findOne({ examId: sub.examId, status: 'open' })
@@ -277,4 +251,4 @@ async function fail(sub, reason, detail) {
   await sub.save()
 }
 
-module.exports = { handleIncomingPhoto, dispatch, checkExpiredBatches, getActiveSession }
+module.exports = { handleIncomingPhoto, dispatch, enqueue, checkExpiredBatches, getActiveSession }

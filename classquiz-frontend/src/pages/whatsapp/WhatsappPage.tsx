@@ -1,557 +1,591 @@
 /**
- * src/pages/whatsapp/WhatsappPage.tsx — VERSION MISE À JOUR
+ * src/pages/whatsapp/WhatsappPage.tsx — REFONTE COMPLÈTE
  *
- * Nouveau feature : Sélecteur d'examen actif
- *   - L'admin choisit l'examen depuis un dropdown
- *   - Toutes les photos WhatsApp s'indexent dans cet examen
- *   - Indicateur visuel de l'examen actif dans le header
- *   - Bouton Pause pour suspendre la réception
+ * Nouveau workflow :
+ *   1. Inbox : chaque photo reçue affiche l'image + code + expéditeur
+ *   2. L'admin choisit l'examen (dropdown) et le batch (dropdown)
+ *   3. Il confirme l'assignation → la soumission passe en "queued"
+ *   4. Il peut dispatcher le batch depuis la vue Batches
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  MessageSquare, CheckCircle2, XCircle, Clock, Send,
-  RefreshCw, Play, ChevronDown, Phone, Layers, Activity,
-  Inbox, X, AlertTriangle, Wifi, WifiOff, RotateCw,
-  User, Hash, BookOpen, Pause, ChevronRight, Search,
-  FlaskConical
+  Image, Send, Clock, AlertTriangle, Inbox, Layers,
+  CheckCircle2, XCircle, RefreshCw, ChevronDown, Play,
+  RotateCw, Wifi, WifiOff, Hash, User, Phone, BookOpen,
+  ArrowRight, Pause, Search, X, Eye, LayoutGrid
 } from 'lucide-react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
-import { StatCard, SectionCard, LoadingPage, EmptyState } from '@/components/shared'
-import { cn } from '@/lib/utils'
+import api from '@/lib/api'
 
-import { useActiveSession, useActiveExams, useActivateSession, useDeactivateSession, useWaStats, useWaSubmissions, useWaBatches, useDispatch } from '@/hooks/useWhatsapp'
-import type { ActiveSession, Exam, Submission, Batch } from '@/types/whatsapp'
+// ── Config ────────────────────────────────────────────────────────────────────
+const AGENT_URL = import.meta.env.VITE_WHATSAPP_AGENT_URL || 'http://localhost:4000'
+const AGENT_KEY = import.meta.env.VITE_WHATSAPP_AGENT_KEY || 'change_this_secret_key'
+const agentApi  = axios.create({ baseURL: AGENT_URL, headers: { 'x-agent-key': AGENT_KEY }, timeout: 10000 })
 
-// Hooks and types moved to dedicated files: src/hooks/useWhatsapp.ts and src/types/whatsapp.ts
+// ── Types ─────────────────────────────────────────────────────────────────────
+interface Submission {
+  _id: string
+  senderPhone: string
+  senderName: string | null
+  rawCaption: string | null
+  extractedCode: string | null
+  studentId: string | null
+  studentName: string | null
+  examId: string | null
+  batchId: string | null
+  status: string
+  failReason: string | null
+  createdAt: string
+  localImagePath: string | null
+}
+interface Batch {
+  _id: string
+  examId: string
+  count: number
+  status: 'open' | 'dispatching' | 'dispatched' | 'failed'
+  successCount: number
+  dispatchedAt: string | null
+  createdAt: string
+}
+interface Exam { _id: string; title: string; subject: string; classLevel: string; status: string }
+interface ActiveSession {
+  _id: string; examId: string; examTitle: string | null; isActive: boolean
+  receivedCount: number; indexedCount: number; failedCount: number
+}
 
+// ── Hooks ─────────────────────────────────────────────────────────────────────
+function useSession()    { return useQuery({ queryKey: ['wa-session'],    queryFn: () => agentApi.get('/session').then(r => r.data.data as ActiveSession | null), refetchInterval: 5000 }) }
+function useExams()      { return useQuery({ queryKey: ['exams-active'],  queryFn: () => api.get('/exams?status=active&limit=50').then(r => r.data.data?.exams as Exam[] || []) }) }
+function useSubmissions(filter: string) {
+  return useQuery({
+    queryKey: ['wa-subs', filter],
+    queryFn: () => agentApi.get('/admin/submissions', { params: { status: filter !== 'all' ? filter : undefined, limit: 50 } }).then(r => r.data.data.submissions as Submission[]),
+    refetchInterval: 6000,
+  })
+}
+function useBatches() {
+  return useQuery({
+    queryKey: ['wa-batches'],
+    queryFn: () => agentApi.get('/admin/batches', { params: { limit: 30 } }).then(r => r.data.data.batches as Batch[]),
+    refetchInterval: 8000,
+  })
+}
+function useStats() {
+  return useQuery({
+    queryKey: ['wa-stats'],
+    queryFn: () => agentApi.get('/admin/stats').then(r => r.data.data),
+    refetchInterval: 8000,
+  })
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function timeAgo(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime()
-  const s = Math.floor(diff / 1000)
-  if (s < 60)  return `${s}s ago`
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (s < 60) return `${s}s`
   const m = Math.floor(s / 60)
-  if (m < 60)  return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24)  return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
+  if (m < 60) return `${m}m`
+  return `${Math.floor(m / 60)}h`
 }
+function fmtPhone(p: string) { return p ? `+${p}` : '—' }
 
-function fmtPhone(p: string) {
-  return p ? `+${p.slice(0,3)} ${p.slice(3,5)} ${p.slice(5,8)} ${p.slice(8)}` : '—'
-}
-
-const SUB_STATUS: Record<string, any> = {
-  received:       { label: 'Received',   color: 'text-sky-400',     bg: 'bg-sky-500/10',     border: 'border-sky-500/20',     dot: 'bg-sky-400' },
-  code_extracted: { label: 'Code OK',    color: 'text-amber-400',   bg: 'bg-amber-500/10',   border: 'border-amber-500/20',   dot: 'bg-amber-400' },
-  student_found:  { label: 'Student OK', color: 'text-teal-400',    bg: 'bg-teal-500/10',    border: 'border-teal-500/20',    dot: 'bg-teal-400' },
-  queued:         { label: 'In Queue',   color: 'text-violet-400',  bg: 'bg-violet-500/10',  border: 'border-violet-500/20',  dot: 'bg-violet-400 animate-pulse' },
-  dispatched:     { label: 'Dispatched', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', dot: 'bg-emerald-400' },
-  failed:         { label: 'Failed',     color: 'text-red-400',     bg: 'bg-red-500/10',     border: 'border-red-500/20',     dot: 'bg-red-500' },
-}
-
-function SubBadge({ status }: { status: string }) {
-  const s = SUB_STATUS[status] ?? SUB_STATUS.received
-  return (
-    <span className={cn('inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border', s.color, s.bg, s.border)}>
-      <span className={cn('w-1.5 h-1.5 rounded-full', s.dot)} />
-      {s.label}
-    </span>
-  )
+const STATUS_META: Record<string, { label: string; color: string; bg: string; dot: string }> = {
+  received:       { label: 'Reçu',        color: 'text-sky-400',     bg: 'bg-sky-500/10 border-sky-500/20',     dot: 'bg-sky-400' },
+  code_extracted: { label: 'Code OK',     color: 'text-amber-400',   bg: 'bg-amber-500/10 border-amber-500/20', dot: 'bg-amber-400' },
+  student_found:  { label: 'Étudiant OK', color: 'text-teal-400',    bg: 'bg-teal-500/10 border-teal-500/20',   dot: 'bg-teal-400' },
+  queued:         { label: 'En attente',  color: 'text-violet-400',  bg: 'bg-violet-500/10 border-violet-500/20', dot: 'bg-violet-400 animate-pulse' },
+  dispatched:     { label: 'Dispatché',   color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20', dot: 'bg-emerald-400' },
+  failed:         { label: 'Échec',       color: 'text-red-400',     bg: 'bg-red-500/10 border-red-500/20',     dot: 'bg-red-500' },
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// EXAM SELECTOR PANEL — Le composant principal nouveau
+// COMPOSANT — Aperçu image
 // ══════════════════════════════════════════════════════════════════════════════
-function ExamSelectorPanel() {
-  const { data: session, isLoading: sessionLoading } = useActiveSession()
-  const { data: exams = [], isLoading: examsLoading } = useActiveExams()
-  const activate   = useActivateSession()
-  const deactivate = useDeactivateSession()
-  const [search, setSearch] = useState('')
-  const [open, setOpen]     = useState(false)
-
-  const filtered = exams.filter(e =>
-    e.title.toLowerCase().includes(search.toLowerCase()) ||
-    e.subject.toLowerCase().includes(search.toLowerCase()) ||
-    e.classLevel.toLowerCase().includes(search.toLowerCase())
-  )
-
-  const hasActiveSession = session?.isActive
-
-  return (
-    <div className="glass-card p-5">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-amber-500/15 flex items-center justify-center">
-            <BookOpen className="w-4 h-4 text-amber-400" />
-          </div>
-          <div>
-            <p className="text-sm font-bold text-white">Examen actif</p>
-            <p className="text-[10px] text-slate-500">Les photos WhatsApp s'indexent ici</p>
-          </div>
-        </div>
-        {hasActiveSession && (
-          <motion.button
-            whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
-            onClick={() => deactivate.mutate()}
-            disabled={deactivate.isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/15 border border-red-500/25 text-red-400 text-xs font-semibold hover:bg-red-500/25 transition-colors"
-          >
-            <Pause className="w-3.5 h-3.5" />
-            Pause
-          </motion.button>
-        )}
+function SubmissionImage({ sub }: { sub: Submission }) {
+  const [open, setOpen] = useState(false)
+  const src = `${AGENT_URL}/admin/submissions/${sub._id}/image?key=${AGENT_KEY}`
+  if (!sub.localImagePath) {
+    return (
+      <div className="w-16 h-16 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center flex-shrink-0">
+        <Image className="w-6 h-6 text-slate-600" />
       </div>
-
-      {/* Session active affichée */}
-      {hasActiveSession ? (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 mb-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <p className="text-xs font-bold text-emerald-300">Réception active</p>
-              </div>
-              <p className="text-sm font-bold text-white mb-0.5">{session.examTitle || session.examId}</p>
-              <p className="text-[10px] text-slate-400">
-                {session.examSubject} · {session.classLevel}
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-lg font-bold text-white">{session.indexedCount}</p>
-              <p className="text-[10px] text-slate-500">indexées</p>
-            </div>
-          </div>
-          {/* Mini stats */}
-          <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-white/[0.06]">
-            {[
-              { label: 'Reçues',  value: session.receivedCount, color: 'text-sky-400' },
-              { label: 'Indexées', value: session.indexedCount,  color: 'text-emerald-400' },
-              { label: 'Erreurs', value: session.failedCount,   color: 'text-red-400' },
-            ].map(s => (
-              <div key={s.label} className="text-center">
-                <p className={cn('text-base font-bold', s.color)}>{s.value}</p>
-                <p className="text-[9px] text-slate-500">{s.label}</p>
-              </div>
-            ))}
-          </div>
+    )
+  }
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className="relative w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 group border border-white/[0.08] hover:border-teal-500/40 transition-all">
+        <img src={src} alt="copie" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display='none' }} />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-all">
+          <Eye className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
-      ) : (
-        <div className="bg-slate-800/50 border border-white/[0.06] rounded-xl p-4 mb-4 text-center">
-          <Pause className="w-6 h-6 text-slate-500 mx-auto mb-2" />
-          <p className="text-xs text-slate-400 font-semibold">Réception suspendue</p>
-          <p className="text-[10px] text-slate-600 mt-0.5">Sélectionne un examen pour activer</p>
-        </div>
-      )}
-
-      {/* Bouton ouvrir sélecteur */}
-      <motion.button
-        whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.08] transition-colors"
-      >
-        <span className="text-xs text-slate-300 font-semibold">
-          {open ? 'Fermer' : hasActiveSession ? 'Changer d\'examen' : 'Sélectionner un examen'}
-        </span>
-        <motion.div animate={{ rotate: open ? 180 : 0 }}>
-          <ChevronDown className="w-4 h-4 text-slate-400" />
-        </motion.div>
-      </motion.button>
-
-      {/* Liste des examens */}
+      </button>
       <AnimatePresence>
         {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="mt-3 space-y-2">
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Rechercher un examen..."
-                  className="w-full bg-white/[0.05] border border-white/[0.08] rounded-xl pl-8 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/40"
-                />
-              </div>
-
-              {/* Exam list */}
-              <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
-                {examsLoading ? (
-                  <p className="text-xs text-slate-500 text-center py-4">Chargement…</p>
-                ) : filtered.length === 0 ? (
-                  <p className="text-xs text-slate-500 text-center py-4">
-                    Aucun examen actif trouvé
-                  </p>
-                ) : (
-                  filtered.map(exam => (
-                    <motion.button
-                      key={exam._id}
-                      whileHover={{ scale: 1.01 }}
-                      whileTap={{ scale: 0.99 }}
-                      onClick={() => {
-                        activate.mutate(exam)
-                        setOpen(false)
-                        setSearch('')
-                      }}
-                      disabled={activate.isPending}
-                      className={cn(
-                        'w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all',
-                        session?.examId === exam._id && session?.isActive
-                          ? 'bg-amber-500/15 border-amber-500/30'
-                          : 'bg-white/[0.03] border-white/[0.06] hover:bg-white/[0.07] hover:border-white/[0.12]'
-                      )}
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center flex-shrink-0">
-                        <FlaskConical className="w-4 h-4 text-amber-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-white truncate">{exam.title}</p>
-                        <p className="text-[10px] text-slate-500">{exam.subject} · {exam.classLevel}</p>
-                      </div>
-                      {session?.examId === exam._id && session?.isActive && (
-                        <CheckCircle2 className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                      )}
-                    </motion.button>
-                  ))
-                )}
-              </div>
-            </div>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setOpen(false)}>
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+              className="relative max-w-2xl max-h-[80vh] rounded-2xl overflow-hidden"
+              onClick={e => e.stopPropagation()}>
+              <img src={src} alt="copie" className="w-full h-full object-contain bg-slate-900" />
+              <button onClick={() => setOpen(false)}
+                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center hover:bg-black/80">
+                <X className="w-4 h-4 text-white" />
+              </button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </>
   )
 }
 
-// ── Submission Row ─────────────────────────────────────────────────────────────
-function SubmissionRow({ sub, delay, onSelect }: { sub: Submission; delay: number; onSelect: (s: Submission) => void }) {
-  return (
-    <motion.tr
-      initial={{ opacity: 0, x: -8 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay }}
-      onClick={() => onSelect(sub)}
-      className="border-b border-white/[0.04] hover:bg-white/[0.04] transition-colors cursor-pointer"
-    >
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-xl bg-green-500/15 flex items-center justify-center flex-shrink-0">
-            <Phone className="w-3.5 h-3.5 text-green-400" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-white">{sub.senderName || 'Unknown'}</p>
-            <p className="text-[10px] text-slate-500 font-mono">{fmtPhone(sub.senderPhone)}</p>
-          </div>
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <span className="text-xs text-slate-400 font-mono">
-          {sub.rawCaption || <span className="text-slate-600 italic">empty</span>}
-        </span>
-      </td>
-      <td className="px-4 py-3">
-        {sub.extractedCode
-          ? <span className="font-mono text-xs bg-amber-500/15 text-amber-300 px-2 py-0.5 rounded border border-amber-500/20">{sub.extractedCode}</span>
-          : <span className="text-slate-600 text-xs">—</span>
-        }
-      </td>
-      <td className="px-4 py-3">
-        <p className="text-xs text-slate-300 truncate max-w-[100px]">{sub.studentName || '—'}</p>
-      </td>
-      <td className="px-4 py-3"><SubBadge status={sub.status} /></td>
-      <td className="px-4 py-3"><span className="text-[10px] text-slate-500">{timeAgo(sub.createdAt)}</span></td>
-      <td className="px-4 py-3"><ChevronRight className="w-3.5 h-3.5 text-slate-600" /></td>
-    </motion.tr>
-  )
-}
+// ══════════════════════════════════════════════════════════════════════════════
+// COMPOSANT — Ligne de soumission avec assignation
+// ══════════════════════════════════════════════════════════════════════════════
+function SubmissionRow({ sub, exams, batches, index }: { sub: Submission; exams: Exam[]; batches: Batch[]; index: number }) {
+  const qc = useQueryClient()
+  const [selectedExamId, setSelectedExamId] = useState(sub.examId || '')
+  const [selectedBatchId, setSelectedBatchId] = useState(sub.batchId || '')
+  const [showDropdowns, setShowDropdowns] = useState(false)
 
-// ── Batch Card ────────────────────────────────────────────────────────────────
-function BatchCard({ batch, index }: { batch: Batch; index: number }) {
-  const dispatch = useDispatch()
-  const colors = {
-    open:        { text: 'text-sky-400',     bg: 'bg-sky-500/10',     border: 'border-sky-500/20' },
-    dispatching: { text: 'text-amber-400',   bg: 'bg-amber-500/10',   border: 'border-amber-500/20' },
-    dispatched:  { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
-    failed:      { text: 'text-red-400',     bg: 'bg-red-500/10',     border: 'border-red-500/20' },
-  }
-  const c = colors[batch.status] || colors.open
+  const openBatches = batches.filter(b => b.status === 'open' && (!selectedExamId || b.examId === selectedExamId))
+  const st = STATUS_META[sub.status] || STATUS_META.received
+
+  const assign = useMutation({
+    mutationFn: () => agentApi.patch(`/admin/submissions/${sub._id}/assign`, {
+      examId:    selectedExamId,
+      examTitle: exams.find(e => e._id === selectedExamId)?.title || '',
+      batchId:   selectedBatchId || undefined,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['wa-subs'] })
+      qc.invalidateQueries({ queryKey: ['wa-batches'] })
+      setShowDropdowns(false)
+    },
+  })
+
+  const canAssign = ['received', 'code_extracted', 'student_found', 'failed'].includes(sub.status)
+  const isAssigned = sub.examId && sub.batchId
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04 }}
-      className="glass-card p-4 flex items-center gap-4"
+      className="glass-card p-4 hover:border-white/[0.12] transition-all"
     >
-      <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border', c.bg, c.border)}>
-        <Layers className={cn('w-4.5 h-4.5', c.text)} />
-      </div>
-      <div className="flex-1">
-        <div className="flex items-center gap-2 mb-1">
-          <p className="text-xs font-bold text-white font-mono">#{batch._id.slice(-8).toUpperCase()}</p>
-          <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold border', c.text, c.bg, c.border)}>
-            {batch.status}
-          </span>
-          {batch.dispatchTrigger && (
-            <span className="text-[9px] text-slate-600 bg-white/[0.04] px-1.5 py-0.5 rounded">{batch.dispatchTrigger}</span>
+      <div className="flex gap-3 items-start">
+        {/* Image */}
+        <SubmissionImage sub={sub} />
+
+        {/* Infos */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Statut */}
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${st.bg} ${st.color}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
+                {st.label}
+              </span>
+              {/* Code étudiant */}
+              {sub.extractedCode && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono bg-white/[0.06] text-slate-300 border border-white/[0.08]">
+                  <Hash className="w-2.5 h-2.5" />
+                  {sub.extractedCode}
+                </span>
+              )}
+              {/* Étudiant */}
+              {sub.studentName && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-teal-400">
+                  <User className="w-2.5 h-2.5" />
+                  {sub.studentName}
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] text-slate-600 flex-shrink-0">{timeAgo(sub.createdAt)}</span>
+          </div>
+
+          {/* Expéditeur */}
+          <div className="flex items-center gap-1 mb-2">
+            <Phone className="w-3 h-3 text-slate-600" />
+            <span className="text-xs text-slate-400">{sub.senderName || 'Inconnu'} · {fmtPhone(sub.senderPhone)}</span>
+          </div>
+
+          {/* Assignation actuelle */}
+          {isAssigned && !showDropdowns && (
+            <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[10px] text-emerald-400">
+                <BookOpen className="w-2.5 h-2.5" />
+                {exams.find(e => e._id === sub.examId)?.title || sub.examId}
+              </div>
+              <ArrowRight className="w-3 h-3 text-slate-600" />
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-500/10 border border-violet-500/20 text-[10px] text-violet-400">
+                <Layers className="w-2.5 h-2.5" />
+                Batch #{batches.findIndex(b => b._id === sub.batchId) + 1 || '?'}
+              </div>
+            </div>
+          )}
+
+          {/* Dropdowns d'assignation */}
+          <AnimatePresence>
+            {showDropdowns && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden">
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  {/* Sélecteur d'examen */}
+                  <div className="relative flex-1 min-w-[160px]">
+                    <label className="block text-[9px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Examen</label>
+                    <div className="relative">
+                      <select
+                        value={selectedExamId}
+                        onChange={e => { setSelectedExamId(e.target.value); setSelectedBatchId('') }}
+                        className="w-full appearance-none bg-white/[0.06] border border-white/[0.1] rounded-lg px-3 py-1.5 text-xs text-white pr-7 focus:outline-none focus:border-teal-500/50"
+                      >
+                        <option value="">— Choisir un examen —</option>
+                        {exams.map(e => <option key={e._id} value={e._id}>{e.title}</option>)}
+                      </select>
+                      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* Sélecteur de batch */}
+                  <div className="relative flex-1 min-w-[140px]">
+                    <label className="block text-[9px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Batch</label>
+                    <div className="relative">
+                      <select
+                        value={selectedBatchId}
+                        onChange={e => setSelectedBatchId(e.target.value)}
+                        disabled={!selectedExamId}
+                        className="w-full appearance-none bg-white/[0.06] border border-white/[0.1] rounded-lg px-3 py-1.5 text-xs text-white pr-7 focus:outline-none focus:border-violet-500/50 disabled:opacity-40"
+                      >
+                        <option value="">— Nouveau batch —</option>
+                        {openBatches.map((b, i) => <option key={b._id} value={b._id}>Batch #{i + 1} · {b.count} copies</option>)}
+                      </select>
+                      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* Boutons */}
+                  <div className="flex items-end gap-1.5">
+                    <button onClick={() => setShowDropdowns(false)}
+                      className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.08] text-xs text-slate-400 hover:text-white transition-colors">
+                      Annuler
+                    </button>
+                    <button
+                      onClick={() => assign.mutate()}
+                      disabled={!selectedExamId || assign.isPending}
+                      className="px-3 py-1.5 rounded-lg bg-teal-500/20 border border-teal-500/30 text-xs text-teal-300 font-bold hover:bg-teal-500/30 transition-colors disabled:opacity-40 flex items-center gap-1.5"
+                    >
+                      {assign.isPending ? <RotateCw className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                      Confirmer
+                    </button>
+                  </div>
+                </div>
+                {assign.isError && (
+                  <p className="text-[10px] text-red-400 mt-1">{(assign.error as any)?.response?.data?.message || 'Erreur'}</p>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Actions */}
+          {canAssign && !showDropdowns && (
+            <button
+              onClick={() => setShowDropdowns(true)}
+              className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500/10 border border-sky-500/20 text-[10px] text-sky-400 font-bold hover:bg-sky-500/20 transition-colors"
+            >
+              <LayoutGrid className="w-3 h-3" />
+              {isAssigned ? 'Réassigner' : 'Assigner à un examen'}
+            </button>
+          )}
+
+          {/* Raison d'échec */}
+          {sub.failReason && (
+            <p className="mt-1 text-[10px] text-red-400 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20">
+              ✗ {sub.failReason}
+            </p>
           )}
         </div>
-        <p className="text-[10px] text-slate-500">{batch.count} copies · {timeAgo(batch.createdAt)}</p>
-        <div className="mt-1.5 h-1 bg-white/[0.06] rounded-full overflow-hidden">
-          <motion.div
-            className="h-full rounded-full"
-            initial={{ width: 0 }}
-            animate={{ width: `${batch.status === 'dispatched' ? 100 : Math.min(90, (batch.count / 30) * 100)}%` }}
-            style={{ background: batch.status === 'dispatched' ? '#10b981' : batch.status === 'failed' ? '#ef4444' : '#0ea5e9' }}
-          />
-        </div>
-      </div>
-      <div className="flex-shrink-0 text-right">
-        {batch.status === 'dispatched' && (
-          <p className="text-xs font-bold text-emerald-400 mb-1">{batch.successCount} ✓</p>
-        )}
-        {batch.status === 'open' && (
-          <motion.button
-            whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-            onClick={() => dispatch.mutate(batch._id)}
-            disabled={dispatch.isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
-          >
-            {dispatch.isPending ? <RotateCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
-            Dispatch
-          </motion.button>
-        )}
       </div>
     </motion.div>
   )
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// MAIN PAGE
+// COMPOSANT — Carte batch
 // ══════════════════════════════════════════════════════════════════════════════
-type Tab = 'messages' | 'batches'
-type Filter = 'all' | 'received' | 'code_extracted' | 'student_found' | 'queued' | 'dispatched' | 'failed'
+function BatchCard({ batch, exams, index }: { batch: Batch; exams: Exam[]; index: number }) {
+  const qc = useQueryClient()
+  const exam = exams.find(e => e._id === batch.examId)
+
+  const dispatch = useMutation({
+    mutationFn: () => agentApi.post(`/admin/batches/${batch._id}/dispatch`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['wa-batches'] })
+      qc.invalidateQueries({ queryKey: ['wa-subs'] })
+      qc.invalidateQueries({ queryKey: ['wa-stats'] })
+    },
+  })
+
+  const statusColor = {
+    open: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+    dispatching: 'text-sky-400 bg-sky-500/10 border-sky-500/20',
+    dispatched: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+    failed: 'text-red-400 bg-red-500/10 border-red-500/20',
+  }[batch.status]
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.05 }}
+      className="glass-card p-4 flex items-center gap-4"
+    >
+      {/* Numéro */}
+      <div className="w-10 h-10 rounded-xl bg-violet-500/15 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
+        <span className="text-sm font-bold text-violet-400">#{index + 1}</span>
+      </div>
+
+      {/* Infos */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusColor}`}>
+            {batch.status}
+          </span>
+          <span className="text-xs font-semibold text-white truncate">
+            {exam?.title || batch.examId}
+          </span>
+        </div>
+        <div className="flex items-center gap-3 text-[10px] text-slate-500">
+          <span className="flex items-center gap-1"><Layers className="w-3 h-3" />{batch.count} copies</span>
+          {batch.status === 'dispatched' && <span className="flex items-center gap-1 text-emerald-500"><CheckCircle2 className="w-3 h-3" />{batch.successCount} envoyées</span>}
+          <span>{timeAgo(batch.createdAt)}</span>
+        </div>
+        {/* Barre de progression */}
+        <div className="mt-2 h-1 rounded-full bg-white/[0.06] overflow-hidden">
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: batch.status === 'dispatched' ? '100%' : `${Math.min(95, (batch.count / 30) * 100)}%` }}
+            className="h-full rounded-full"
+            style={{ background: batch.status === 'dispatched' ? '#10b981' : batch.status === 'failed' ? '#ef4444' : '#8b5cf6' }}
+          />
+        </div>
+      </div>
+
+      {/* Action */}
+      {batch.status === 'open' && (
+        <motion.button
+          whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+          onClick={() => dispatch.mutate()}
+          disabled={dispatch.isPending}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-500/30 hover:bg-amber-500/30 transition-colors disabled:opacity-50 flex-shrink-0"
+        >
+          {dispatch.isPending ? <RotateCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+          Dispatcher
+        </motion.button>
+      )}
+      {batch.status === 'dispatched' && (
+        <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-xs font-bold border border-emerald-500/20 flex-shrink-0">
+          <CheckCircle2 className="w-3.5 h-3.5" /> Envoyé
+        </div>
+      )}
+    </motion.div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PAGE PRINCIPALE
+// ══════════════════════════════════════════════════════════════════════════════
+type Tab    = 'inbox' | 'batches'
+type Filter = 'all' | 'received' | 'queued' | 'dispatched' | 'failed'
 
 export default function WhatsappPage() {
-  const [tab, setTab]       = useState<Tab>('messages')
+  const [tab, setTab]       = useState<Tab>('inbox')
   const [filter, setFilter] = useState<Filter>('all')
-  const [page, setPage]     = useState(1)
-  const [selected, setSelected] = useState<Submission | null>(null)
-  const qc = useQueryClient()
+  const qc                  = useQueryClient()
 
-  const { data: stats }   = useWaStats()
-  const { data: subData, isLoading: subLoading } = useWaSubmissions({
-    status: filter !== 'all' ? filter : undefined,
-    page,
-  })
-  const { data: batchData, isLoading: batchLoading } = useWaBatches()
-  const { data: session }  = useActiveSession()
+  const { data: session }  = useSession()
+  const { data: exams = [] } = useExams()
+  const { data: subs = [], isLoading: subsLoading }   = useSubmissions(filter)
+  const { data: batches = [], isLoading: batchLoading } = useBatches()
+  const { data: stats }    = useStats()
 
-  const handleRefresh = useCallback(() => {
-    qc.invalidateQueries({ queryKey: ['wa-'] as any })
-    qc.invalidateQueries({ queryKey: ['wa-session'] })
-  }, [qc])
+  // Totaux depuis stats
+  const total      = stats?.submissions.reduce((a: number, s: any) => a + s.count, 0) || 0
+  const queued     = stats?.submissions.find((s: any) => s._id === 'queued')?.count || 0
+  const dispatched = stats?.submissions.find((s: any) => s._id === 'dispatched')?.count || 0
+  const failed     = stats?.submissions.find((s: any) => s._id === 'failed')?.count || 0
+  const openBatches = batches.filter(b => b.status === 'open').length
 
-  useEffect(() => {
-    const id = setInterval(handleRefresh, 6000)
-    return () => clearInterval(id)
-  }, [handleRefresh])
-
-  // Stats
-  const by = Object.fromEntries(stats?.submissions.map(s => [s._id, s.count]) || [])
-  const total      = stats?.submissions.reduce((a, s) => a + s.count, 0) || 0
-  const dispatched = by['dispatched'] || 0
-  const queued     = (by['queued'] || 0) + (by['student_found'] || 0)
-  const failed     = by['failed'] || 0
-
-  const filters: { key: Filter; label: string }[] = [
-    { key: 'all', label: 'All' }, { key: 'received', label: 'Received' },
-    { key: 'code_extracted', label: 'Code OK' }, { key: 'student_found', label: 'Student OK' },
-    { key: 'queued', label: 'In Queue' }, { key: 'dispatched', label: 'Dispatched' },
-    { key: 'failed', label: 'Failed' },
+  const filters: { key: Filter; label: string; count?: number }[] = [
+    { key: 'all',        label: 'Tous',         count: total },
+    { key: 'received',   label: '📥 Nouveaux' },
+    { key: 'queued',     label: '⏳ En attente', count: queued },
+    { key: 'dispatched', label: '✅ Dispatchés', count: dispatched },
+    { key: 'failed',     label: '❌ Échecs',     count: failed },
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6">
 
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-green-500/25 to-teal-500/15 flex items-center justify-center border border-green-500/20">
-            <MessageSquare className="w-5 h-5 text-green-400" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-white">WhatsApp Monitor</h2>
-            <p className="text-xs text-slate-400">
-              {session?.isActive
-                ? `📚 Examen actif : ${session.examTitle || session.examId}`
-                : '⏸ Aucun examen actif — sélectionne un examen'
-              }
-            </p>
-          </div>
+        <div>
+          <h1 className="text-xl font-bold text-white">WhatsApp Inbox</h1>
+          <p className="text-xs text-slate-400 mt-0.5">Assignez chaque copie reçue à un examen et un batch</p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Indicateur online/offline */}
-          <div className={cn(
-            'flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold',
+          {/* Session pill */}
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
             session?.isActive
               ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
               : 'bg-slate-500/10 border-slate-500/20 text-slate-400'
-          )}>
-            {session?.isActive
-              ? <><Wifi className="w-3.5 h-3.5" /> Receiving</>
-              : <><WifiOff className="w-3.5 h-3.5" /> Paused</>
-            }
+          }`}>
+            {session?.isActive ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+            {session?.isActive ? `Réception active · ${session.examTitle}` : 'Réception suspendue'}
           </div>
-          <motion.button
-            whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
-            onClick={handleRefresh}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.06] border border-white/[0.08] text-xs text-slate-300 hover:text-white transition-all"
-          >
+          <button onClick={() => qc.invalidateQueries()}
+            className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-slate-400 hover:text-white transition-colors">
             <RefreshCw className="w-3.5 h-3.5" />
-            Refresh
-          </motion.button>
+          </button>
         </div>
       </div>
 
-      {/* ── Stats ───────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Messages"  value={total}      icon={Inbox}         gradient="quiz"  delay={0}    subtitle="All time" />
-        <StatCard title="Dispatched"      value={dispatched} icon={Send}          gradient="teal"  delay={0.05} subtitle="Sent to ClassQuiz" />
-        <StatCard title="In Queue"        value={queued}     icon={Clock}         gradient="class" delay={0.1}  subtitle="Waiting dispatch" />
-        <StatCard title="Failed"          value={failed}     icon={AlertTriangle} gradient="red"   delay={0.15} subtitle="Check errors" />
+      {/* ── Stats ─────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: 'Total reçus',    value: total,      icon: Inbox,         color: 'text-sky-400',     bg: 'bg-sky-500/10' },
+          { label: 'En attente',     value: queued,     icon: Clock,         color: 'text-violet-400',  bg: 'bg-violet-500/10' },
+          { label: 'Dispatchés',     value: dispatched, icon: Send,          color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+          { label: 'Batches ouverts',value: openBatches,icon: Layers,        color: 'text-amber-400',   bg: 'bg-amber-500/10' },
+        ].map((s, i) => (
+          <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+            className="glass-card p-4">
+            <div className={`w-8 h-8 rounded-lg ${s.bg} flex items-center justify-center mb-2`}>
+              <s.icon className={`w-4 h-4 ${s.color}`} />
+            </div>
+            <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">{s.label}</p>
+          </motion.div>
+        ))}
       </div>
 
-      {/* ── Main Grid ───────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      {/* ── Tabs ──────────────────────────────────────────────────────────── */}
+      <div className="flex gap-1 p-1 bg-white/[0.03] rounded-xl border border-white/[0.06] w-fit">
+        {([
+          { key: 'inbox',   label: 'Inbox',   icon: Inbox,  badge: subs.filter(s => !s.examId).length },
+          { key: 'batches', label: 'Batches', icon: Layers, badge: openBatches },
+        ] as const).map(t => (
+          <button key={t.key} onClick={() => setTab(t.key as Tab)}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+              tab === t.key ? 'bg-white/[0.08] text-white shadow' : 'text-slate-500 hover:text-slate-300'
+            }`}>
+            <t.icon className="w-3.5 h-3.5" />
+            {t.label}
+            {t.badge > 0 && (
+              <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+                tab === t.key ? 'bg-teal-500/20 text-teal-300' : 'bg-white/[0.06] text-slate-500'
+              }`}>{t.badge}</span>
+            )}
+          </button>
+        ))}
+      </div>
 
-        {/* Exam Selector Sidebar */}
-        <div className="lg:col-span-1">
-          <ExamSelectorPanel />
-        </div>
+      {/* ── Tab: Inbox ────────────────────────────────────────────────────── */}
+      <AnimatePresence mode="wait">
+        {tab === 'inbox' && (
+          <motion.div key="inbox" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
 
-        {/* Main content */}
-        <div className="lg:col-span-3 space-y-4">
-
-          {/* Tabs */}
-          <div className="flex gap-1 p-1 bg-white/[0.04] rounded-xl border border-white/[0.06] w-fit">
-            {([
-              { key: 'messages', label: 'Messages', icon: Inbox,  count: subData?.pagination.total },
-              { key: 'batches',  label: 'Batches',  icon: Layers, count: batchData?.pagination.total },
-            ] as const).map(t => (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key as Tab)}
-                className={cn(
-                  'flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all',
-                  tab === t.key ? 'bg-white/[0.1] text-white' : 'text-slate-400 hover:text-white'
-                )}
-              >
-                <t.icon className="w-3.5 h-3.5" />
-                {t.label}
-                {t.count !== undefined && (
-                  <span className="ml-1 bg-white/10 text-slate-300 text-[9px] px-1.5 py-0.5 rounded-full">{t.count}</span>
-                )}
-              </button>
-            ))}
-          </div>
-
-          <AnimatePresence mode="wait">
-
-            {/* Messages Tab */}
-            {tab === 'messages' && (
-              <motion.div key="messages" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-                <SectionCard
-                  action={
-                    <div className="flex gap-1 flex-wrap">
-                      {filters.map(f => (
-                        <button
-                          key={f.key}
-                          onClick={() => { setFilter(f.key); setPage(1) }}
-                          className={cn(
-                            'px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all',
-                            filter === f.key
-                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                              : 'bg-white/[0.04] text-slate-400 hover:text-white border border-white/[0.06]'
-                          )}
-                        >
-                          {f.label}
-                        </button>
-                      ))}
-                    </div>
-                  }
-                >
-                  <div className="overflow-x-auto">
-                    <table className="w-full table-dark">
-                      <thead>
-                        <tr>
-                          <th>Sender</th><th>Caption</th><th>Code</th>
-                          <th>Student</th><th>Status</th><th>Time</th><th></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {subLoading ? (
-                          <tr><td colSpan={7} className="text-center py-10 text-xs text-slate-500">Loading…</td></tr>
-                        ) : !subData?.submissions.length ? (
-                          <tr><td colSpan={7} className="text-center py-10 text-xs text-slate-500">
-                            {session?.isActive ? 'No messages yet' : '⏸ Activate an exam to start receiving photos'}
-                          </td></tr>
-                        ) : (
-                          subData.submissions.map((s, i) => (
-                            <SubmissionRow key={s._id} sub={s} delay={i * 0.03} onSelect={setSelected} />
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                  {subData && subData.pagination.pages > 1 && (
-                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/[0.06]">
-                      <p className="text-xs text-slate-500">{subData.pagination.total} total · page {page}/{subData.pagination.pages}</p>
-                      <div className="flex gap-2">
-                        <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page === 1}
-                          className="px-3 py-1 rounded-lg bg-white/[0.06] text-xs text-slate-300 disabled:opacity-40 hover:bg-white/[0.1]">← Prev</button>
-                        <button onClick={() => setPage(p => Math.min(subData.pagination.pages, p+1))} disabled={page === subData.pagination.pages}
-                          className="px-3 py-1 rounded-lg bg-white/[0.06] text-xs text-slate-300 disabled:opacity-40 hover:bg-white/[0.1]">Next →</button>
-                      </div>
-                    </div>
+            {/* Filtres */}
+            <div className="flex gap-1.5 flex-wrap">
+              {filters.map(f => (
+                <button key={f.key} onClick={() => setFilter(f.key)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
+                    filter === f.key
+                      ? 'bg-white/[0.1] border-white/[0.15] text-white'
+                      : 'bg-white/[0.03] border-white/[0.06] text-slate-500 hover:text-slate-300'
+                  }`}>
+                  {f.label}
+                  {f.count !== undefined && f.count > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-white/[0.08] text-slate-400">{f.count}</span>
                   )}
-                </SectionCard>
-              </motion.div>
+                </button>
+              ))}
+            </div>
+
+            {/* Aide contextuelle */}
+            {filter === 'all' && subs.some(s => !s.examId) && (
+              <div className="flex items-start gap-3 p-3 rounded-xl bg-sky-500/5 border border-sky-500/15">
+                <div className="w-6 h-6 rounded-lg bg-sky-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <ArrowRight className="w-3 h-3 text-sky-400" />
+                </div>
+                <p className="text-xs text-sky-300">
+                  <span className="font-bold">{subs.filter(s => !s.examId).length} copie(s) non assignée(s)</span> — Cliquez sur
+                  <span className="mx-1 px-1.5 py-0.5 bg-sky-500/20 rounded text-sky-300 font-mono text-[10px]">Assigner à un examen</span>
+                  pour chaque photo, choisissez l'examen et le batch, puis confirmez.
+                </p>
+              </div>
             )}
 
-            {/* Batches Tab */}
-            {tab === 'batches' && (
-              <motion.div key="batches" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-3">
-                {batchLoading ? (
-                  <div className="glass-card p-8 text-center text-xs text-slate-500">Loading…</div>
-                ) : !batchData?.batches.length ? (
-                  <EmptyState icon={Layers} title="No batches yet" description="Batches are created automatically when photos arrive" />
-                ) : (
-                  batchData.batches.map((b, i) => <BatchCard key={b._id} batch={b} index={i} />)
-                )}
-              </motion.div>
+            {/* Liste */}
+            {subsLoading ? (
+              <div className="space-y-3">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="glass-card p-4 animate-pulse h-24" />
+                ))}
+              </div>
+            ) : subs.length === 0 ? (
+              <div className="glass-card p-10 text-center">
+                <Inbox className="w-10 h-10 text-slate-700 mx-auto mb-3" />
+                <p className="text-sm text-slate-500">
+                  {session?.isActive ? 'Aucune soumission pour ce filtre' : '⏸ Activez un examen pour recevoir des photos'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {subs.map((sub, i) => (
+                  <SubmissionRow key={sub._id} sub={sub} exams={exams} batches={batches} index={i} />
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* ── Tab: Batches ───────────────────────────────────────────────── */}
+        {tab === 'batches' && (
+          <motion.div key="batches" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
+
+            {openBatches > 0 && (
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-500/5 border border-amber-500/15">
+                <Clock className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                <p className="text-xs text-amber-300">
+                  <span className="font-bold">{openBatches} batch(s) ouvert(s)</span> · Cliquez sur <span className="font-bold">Dispatcher</span> pour envoyer vers ClassQuiz et déclencher l'OCR + correction.
+                </p>
+              </div>
             )}
 
-          </AnimatePresence>
-        </div>
-      </div>
+            {batchLoading ? (
+              <div className="space-y-3">
+                {[...Array(3)].map((_, i) => <div key={i} className="glass-card p-4 animate-pulse h-20" />)}
+              </div>
+            ) : batches.length === 0 ? (
+              <div className="glass-card p-10 text-center">
+                <Layers className="w-10 h-10 text-slate-700 mx-auto mb-3" />
+                <p className="text-sm text-slate-500">Aucun batch — assignez d'abord des copies depuis l'Inbox</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {batches.map((b, i) => <BatchCard key={b._id} batch={b} exams={exams} index={i} />)}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Auto-refresh */}
-      <div className="flex justify-end">
-        <p className="text-[10px] text-slate-700">Auto-refresh every 6s</p>
-      </div>
-
+      <p className="text-[10px] text-slate-700 text-right">Actualisation automatique toutes les 6s</p>
     </div>
   )
 }

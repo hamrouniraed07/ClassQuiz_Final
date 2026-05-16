@@ -1,6 +1,6 @@
 /**
  * src/server.js — VERSION MISE À JOUR
- * Ajout de la route /session
+ * Fix CORS : ajout de PATCH dans les méthodes autorisées
  */
 require('dotenv').config()
 require('express-async-errors')
@@ -28,7 +28,7 @@ app.use(cors({
     if (allowedOrigins.includes(origin)) return callback(null, true)
     callback(new Error(`CORS: origine non autorisée: ${origin}`))
   },
-  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],   // ← PATCH ajouté
   allowedHeaders: ['Content-Type', 'x-agent-key', 'Authorization'],
   credentials: true,
 }))
@@ -45,12 +45,11 @@ fs.mkdirSync(path.join(process.cwd(), 'logs'),               { recursive: true }
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/webhook', require('./routes/webhook'))
 app.use('/admin',   require('./routes/admin'))
-app.use('/session', require('./routes/session'))   // ← NOUVEAU
+app.use('/session', require('./routes/session'))
 
 app.get('/health', async (req, res) => {
   const mongoOk = mongoose.connection.readyState === 1
 
-  // Inclure la session active dans le health check
   let activeSession = null
   try {
     const { getActiveSession } = require('./services/pipeline')
@@ -105,10 +104,12 @@ async function start() {
 
   app.listen(PORT, () => {
     logger.info(`[Server] ✓ WhatsApp Agent v2.1 démarré sur port ${PORT}`)
-    logger.info(`[Server]   POST   /webhook         — réception images WhatsApp`)
-    logger.info(`[Server]   GET    /admin            — monitoring & dispatch`)
-    logger.info(`[Server]   GET    /session          — session exam active`)
-    logger.info(`[Server]   POST   /session/activate — activer un examen`)
+    logger.info(`[Server]   POST   /webhook            — réception images WhatsApp`)
+    logger.info(`[Server]   GET    /admin              — monitoring & dispatch`)
+    logger.info(`[Server]   PATCH  /admin/submissions/:id/assign — assignation manuelle`)
+    logger.info(`[Server]   GET    /admin/submissions/:id/image  — aperçu image`)
+    logger.info(`[Server]   GET    /session            — session exam active`)
+    logger.info(`[Server]   POST   /session/activate   — activer un examen`)
     logger.info(`[Server]   DELETE /session/deactivate — désactiver`)
     logger.info(`[Server]   CORS activé pour: ${allowedOrigins.join(', ')}`)
   })
