@@ -134,7 +134,7 @@ async function handleIncomingPhoto(msg) {
   // ════════════════════════════════════════════════════════════════
   let imageInfo
   try {
-    imageInfo = await whatsapp.downloadMedia(mediaId, messageId, mimeType)
+    imageInfo = await whatsapp.downloadMedia(mediaId, messageId, mimeType, msg.mediaUrl)
   } catch (err) {
     logger.error(`[Pipeline] ✗ Téléchargement image échoué: ${err.message}`)
     await fail(sub, 'download_failed', err.message)

@@ -119,6 +119,24 @@ services:
       retries: 3
       start_period: 15s
 
+
+  # ── WAHA (WhatsApp HTTP API) 
+  waha:
+    image: devlikeapro/waha
+    container_name: classquiz-waha
+    restart: unless-stopped
+    environment:
+      - WHATSAPP_API_KEY=change_this_secret
+      - WHATSAPP_DEFAULT_ENGINE=NOWEB        # ← changer WEBJS → NOWEB
+      - WAHA_DASHBOARD_USERNAME=admin
+      - WAHA_DASHBOARD_PASSWORD=classquiz2024
+    ports:
+      - "3001:3000"
+    volumes:
+      - waha_data:/app/.sessions
+    networks:
+      - classquiz-internal
+
   # ── Mongo Express (Dev) 
   mongo-express:
     image: mongo-express:1.0.2
@@ -150,3 +168,5 @@ volumes:
     driver: local   # partagé entre web-api et whatsapp-agent
   logs_data:
     driver: local
+  waha_data:        # ← ajouter cette ligne
+    driver: local  

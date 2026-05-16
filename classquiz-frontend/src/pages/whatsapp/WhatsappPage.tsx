@@ -1,11 +1,5 @@
 /**
  * src/pages/whatsapp/WhatsappPage.tsx — REFONTE COMPLÈTE
- *
- * Nouveau workflow :
- *   1. Inbox : chaque photo reçue affiche l'image + code + expéditeur
- *   2. L'admin choisit l'examen (dropdown) et le batch (dropdown)
- *   3. Il confirme l'assignation → la soumission passe en "queued"
- *   4. Il peut dispatcher le batch depuis la vue Batches
  */
 
 import { useState, useCallback } from 'react'
@@ -178,43 +172,33 @@ function SubmissionRow({ sub, exams, batches, index }: { sub: Submission; exams:
       className="glass-card p-4 hover:border-white/[0.12] transition-all"
     >
       <div className="flex gap-3 items-start">
-        {/* Image */}
         <SubmissionImage sub={sub} />
-
-        {/* Infos */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2 mb-2">
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Statut */}
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${st.bg} ${st.color}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
                 {st.label}
               </span>
-              {/* Code étudiant */}
               {sub.extractedCode && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono bg-white/[0.06] text-slate-300 border border-white/[0.08]">
-                  <Hash className="w-2.5 h-2.5" />
-                  {sub.extractedCode}
+                  <Hash className="w-2.5 h-2.5" />{sub.extractedCode}
                 </span>
               )}
-              {/* Étudiant */}
               {sub.studentName && (
                 <span className="inline-flex items-center gap-1 text-[10px] text-teal-400">
-                  <User className="w-2.5 h-2.5" />
-                  {sub.studentName}
+                  <User className="w-2.5 h-2.5" />{sub.studentName}
                 </span>
               )}
             </div>
             <span className="text-[10px] text-slate-600 flex-shrink-0">{timeAgo(sub.createdAt)}</span>
           </div>
 
-          {/* Expéditeur */}
           <div className="flex items-center gap-1 mb-2">
             <Phone className="w-3 h-3 text-slate-600" />
             <span className="text-xs text-slate-400">{sub.senderName || 'Inconnu'} · {fmtPhone(sub.senderPhone)}</span>
           </div>
 
-          {/* Assignation actuelle */}
           {isAssigned && !showDropdowns && (
             <div className="flex items-center gap-2 mb-2">
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[10px] text-emerald-400">
@@ -229,56 +213,40 @@ function SubmissionRow({ sub, exams, batches, index }: { sub: Submission; exams:
             </div>
           )}
 
-          {/* Dropdowns d'assignation */}
           <AnimatePresence>
             {showDropdowns && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
                 className="overflow-hidden">
                 <div className="flex gap-2 mt-2 flex-wrap">
-                  {/* Sélecteur d'examen */}
                   <div className="relative flex-1 min-w-[160px]">
                     <label className="block text-[9px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Examen</label>
                     <div className="relative">
-                      <select
-                        value={selectedExamId}
-                        onChange={e => { setSelectedExamId(e.target.value); setSelectedBatchId('') }}
-                        className="w-full appearance-none bg-white/[0.06] border border-white/[0.1] rounded-lg px-3 py-1.5 text-xs text-white pr-7 focus:outline-none focus:border-teal-500/50"
-                      >
+                      <select value={selectedExamId} onChange={e => { setSelectedExamId(e.target.value); setSelectedBatchId('') }}
+                        className="w-full appearance-none bg-white/[0.06] border border-white/[0.1] rounded-lg px-3 py-1.5 text-xs text-white pr-7 focus:outline-none focus:border-teal-500/50">
                         <option value="">— Choisir un examen —</option>
                         {exams.map(e => <option key={e._id} value={e._id}>{e.title}</option>)}
                       </select>
                       <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
                     </div>
                   </div>
-
-                  {/* Sélecteur de batch */}
                   <div className="relative flex-1 min-w-[140px]">
                     <label className="block text-[9px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Batch</label>
                     <div className="relative">
-                      <select
-                        value={selectedBatchId}
-                        onChange={e => setSelectedBatchId(e.target.value)}
-                        disabled={!selectedExamId}
-                        className="w-full appearance-none bg-white/[0.06] border border-white/[0.1] rounded-lg px-3 py-1.5 text-xs text-white pr-7 focus:outline-none focus:border-violet-500/50 disabled:opacity-40"
-                      >
+                      <select value={selectedBatchId} onChange={e => setSelectedBatchId(e.target.value)} disabled={!selectedExamId}
+                        className="w-full appearance-none bg-white/[0.06] border border-white/[0.1] rounded-lg px-3 py-1.5 text-xs text-white pr-7 focus:outline-none focus:border-violet-500/50 disabled:opacity-40">
                         <option value="">— Nouveau batch —</option>
                         {openBatches.map((b, i) => <option key={b._id} value={b._id}>Batch #{i + 1} · {b.count} copies</option>)}
                       </select>
                       <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
                     </div>
                   </div>
-
-                  {/* Boutons */}
                   <div className="flex items-end gap-1.5">
                     <button onClick={() => setShowDropdowns(false)}
                       className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.08] text-xs text-slate-400 hover:text-white transition-colors">
                       Annuler
                     </button>
-                    <button
-                      onClick={() => assign.mutate()}
-                      disabled={!selectedExamId || assign.isPending}
-                      className="px-3 py-1.5 rounded-lg bg-teal-500/20 border border-teal-500/30 text-xs text-teal-300 font-bold hover:bg-teal-500/30 transition-colors disabled:opacity-40 flex items-center gap-1.5"
-                    >
+                    <button onClick={() => assign.mutate()} disabled={!selectedExamId || assign.isPending}
+                      className="px-3 py-1.5 rounded-lg bg-teal-500/20 border border-teal-500/30 text-xs text-teal-300 font-bold hover:bg-teal-500/30 transition-colors disabled:opacity-40 flex items-center gap-1.5">
                       {assign.isPending ? <RotateCw className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
                       Confirmer
                     </button>
@@ -291,18 +259,14 @@ function SubmissionRow({ sub, exams, batches, index }: { sub: Submission; exams:
             )}
           </AnimatePresence>
 
-          {/* Actions */}
           {canAssign && !showDropdowns && (
-            <button
-              onClick={() => setShowDropdowns(true)}
-              className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500/10 border border-sky-500/20 text-[10px] text-sky-400 font-bold hover:bg-sky-500/20 transition-colors"
-            >
+            <button onClick={() => setShowDropdowns(true)}
+              className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500/10 border border-sky-500/20 text-[10px] text-sky-400 font-bold hover:bg-sky-500/20 transition-colors">
               <LayoutGrid className="w-3 h-3" />
               {isAssigned ? 'Réassigner' : 'Assigner à un examen'}
             </button>
           )}
 
-          {/* Raison d'échec */}
           {sub.failReason && (
             <p className="mt-1 text-[10px] text-red-400 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20">
               ✗ {sub.failReason}
@@ -331,58 +295,40 @@ function BatchCard({ batch, exams, index }: { batch: Batch; exams: Exam[]; index
   })
 
   const statusColor = {
-    open: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+    open:        'text-amber-400 bg-amber-500/10 border-amber-500/20',
     dispatching: 'text-sky-400 bg-sky-500/10 border-sky-500/20',
-    dispatched: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
-    failed: 'text-red-400 bg-red-500/10 border-red-500/20',
+    dispatched:  'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+    failed:      'text-red-400 bg-red-500/10 border-red-500/20',
   }[batch.status]
 
   return (
-    <motion.div
-      initial={{ opacity: 0, x: -10 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.05 }}
-      className="glass-card p-4 flex items-center gap-4"
-    >
-      {/* Numéro */}
+    <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.05 }}
+      className="glass-card p-4 flex items-center gap-4">
       <div className="w-10 h-10 rounded-xl bg-violet-500/15 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
         <span className="text-sm font-bold text-violet-400">#{index + 1}</span>
       </div>
-
-      {/* Infos */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusColor}`}>
-            {batch.status}
-          </span>
-          <span className="text-xs font-semibold text-white truncate">
-            {exam?.title || batch.examId}
-          </span>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusColor}`}>{batch.status}</span>
+          <span className="text-xs font-semibold text-white truncate">{exam?.title || batch.examId}</span>
         </div>
         <div className="flex items-center gap-3 text-[10px] text-slate-500">
           <span className="flex items-center gap-1"><Layers className="w-3 h-3" />{batch.count} copies</span>
           {batch.status === 'dispatched' && <span className="flex items-center gap-1 text-emerald-500"><CheckCircle2 className="w-3 h-3" />{batch.successCount} envoyées</span>}
           <span>{timeAgo(batch.createdAt)}</span>
         </div>
-        {/* Barre de progression */}
         <div className="mt-2 h-1 rounded-full bg-white/[0.06] overflow-hidden">
-          <motion.div
-            initial={{ width: 0 }}
+          <motion.div initial={{ width: 0 }}
             animate={{ width: batch.status === 'dispatched' ? '100%' : `${Math.min(95, (batch.count / 30) * 100)}%` }}
             className="h-full rounded-full"
             style={{ background: batch.status === 'dispatched' ? '#10b981' : batch.status === 'failed' ? '#ef4444' : '#8b5cf6' }}
           />
         </div>
       </div>
-
-      {/* Action */}
       {batch.status === 'open' && (
-        <motion.button
-          whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-          onClick={() => dispatch.mutate()}
-          disabled={dispatch.isPending}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-500/30 hover:bg-amber-500/30 transition-colors disabled:opacity-50 flex-shrink-0"
-        >
+        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+          onClick={() => dispatch.mutate()} disabled={dispatch.isPending}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-500/30 hover:bg-amber-500/30 transition-colors disabled:opacity-50 flex-shrink-0">
           {dispatch.isPending ? <RotateCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
           Dispatcher
         </motion.button>
@@ -403,21 +349,49 @@ type Tab    = 'inbox' | 'batches'
 type Filter = 'all' | 'received' | 'queued' | 'dispatched' | 'failed'
 
 export default function WhatsappPage() {
-  const [tab, setTab]       = useState<Tab>('inbox')
-  const [filter, setFilter] = useState<Filter>('all')
-  const qc                  = useQueryClient()
+  const [tab, setTab]               = useState<Tab>('inbox')
+  const [filter, setFilter]         = useState<Filter>('all')
+  const [showSessionModal, setShowSessionModal] = useState(false)
+  const [selectedExamId, setSelectedExamId]     = useState('')
+  const qc = useQueryClient()
 
-  const { data: session }  = useSession()
-  const { data: exams = [] } = useExams()
-  const { data: subs = [], isLoading: subsLoading }   = useSubmissions(filter)
+  const { data: session }            = useSession()
+  const { data: exams = [] }         = useExams()
+  const { data: subs = [], isLoading: subsLoading }     = useSubmissions(filter)
   const { data: batches = [], isLoading: batchLoading } = useBatches()
-  const { data: stats }    = useStats()
+  const { data: stats }              = useStats()
 
-  // Totaux depuis stats
-  const total      = stats?.submissions.reduce((a: number, s: any) => a + s.count, 0) || 0
-  const queued     = stats?.submissions.find((s: any) => s._id === 'queued')?.count || 0
-  const dispatched = stats?.submissions.find((s: any) => s._id === 'dispatched')?.count || 0
-  const failed     = stats?.submissions.find((s: any) => s._id === 'failed')?.count || 0
+  // ── Mutations session ────────────────────────────────────────────────────
+  const activateSession = useMutation({
+    mutationFn: (examId: string) => {
+      const exam = exams.find(e => e._id === examId)
+      return agentApi.post('/session/activate', {
+        examId,
+        examTitle:   exam?.title   || 'Examen',
+        examSubject: exam?.subject || '',
+        classLevel:  exam?.classLevel || '',
+      })
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['wa-session'] })
+      setShowSessionModal(false)
+      setSelectedExamId('')
+    },
+  })
+
+  const deactivateSession = useMutation({
+    mutationFn: () => agentApi.delete('/session/deactivate'),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['wa-session'] })
+      setShowSessionModal(false)
+    },
+  })
+
+  // ── Stats ────────────────────────────────────────────────────────────────
+  const total       = stats?.submissions.reduce((a: number, s: any) => a + s.count, 0) || 0
+  const queued      = stats?.submissions.find((s: any) => s._id === 'queued')?.count || 0
+  const dispatched  = stats?.submissions.find((s: any) => s._id === 'dispatched')?.count || 0
+  const failed      = stats?.submissions.find((s: any) => s._id === 'failed')?.count || 0
   const openBatches = batches.filter(b => b.status === 'open').length
 
   const filters: { key: Filter; label: string; count?: number }[] = [
@@ -431,22 +405,28 @@ export default function WhatsappPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
 
-      {/* ── Header ────────────────────────────────────────────────────────── */}
+      {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-white">WhatsApp Inbox</h1>
           <p className="text-xs text-slate-400 mt-0.5">Assignez chaque copie reçue à un examen et un batch</p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Session pill */}
-          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
-            session?.isActive
-              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-              : 'bg-slate-500/10 border-slate-500/20 text-slate-400'
-          }`}>
+
+          {/* ── Session pill cliquable ─────────────────────────────────── */}
+          <button
+            onClick={() => setShowSessionModal(true)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all hover:opacity-80 cursor-pointer ${
+              session?.isActive
+                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                : 'bg-slate-500/10 border-slate-500/20 text-slate-400'
+            }`}
+          >
             {session?.isActive ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
             {session?.isActive ? `Réception active · ${session.examTitle}` : 'Réception suspendue'}
-          </div>
+            <ChevronDown className="w-3 h-3 ml-1" />
+          </button>
+
           <button onClick={() => qc.invalidateQueries()}
             className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-slate-400 hover:text-white transition-colors">
             <RefreshCw className="w-3.5 h-3.5" />
@@ -454,13 +434,111 @@ export default function WhatsappPage() {
         </div>
       </div>
 
-      {/* ── Stats ─────────────────────────────────────────────────────────── */}
+      {/* ── Modal Session ───────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showSessionModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowSessionModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-slate-900 border border-white/[0.1] rounded-2xl p-6 w-full max-w-md shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <h2 className="text-base font-bold text-white">Gestion de la session</h2>
+                <button onClick={() => setShowSessionModal(false)}
+                  className="w-7 h-7 rounded-lg bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-slate-400 hover:text-white transition-colors">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <p className="text-xs text-slate-400 mb-5">Activez un examen pour recevoir les copies WhatsApp</p>
+
+              {/* Examen actif actuel */}
+              {session?.isActive && (
+                <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 mb-4">
+                  <div className="flex items-center gap-2">
+                    <Wifi className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold text-emerald-400">{session.examTitle}</p>
+                      <p className="text-[10px] text-slate-500">
+                        {session.receivedCount} reçues · {session.indexedCount} indexées · {session.failedCount} échecs
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => deactivateSession.mutate()}
+                    disabled={deactivateSession.isPending}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-[10px] text-red-400 font-bold hover:bg-red-500/20 transition-colors disabled:opacity-40"
+                  >
+                    {deactivateSession.isPending
+                      ? <RotateCw className="w-3 h-3 animate-spin" />
+                      : <Pause className="w-3 h-3" />}
+                    Désactiver
+                  </button>
+                </div>
+              )}
+
+              {/* Sélecteur nouvel examen */}
+              <div className="space-y-3">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  {session?.isActive ? 'Changer d\'examen' : 'Choisir un examen'}
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedExamId}
+                    onChange={e => setSelectedExamId(e.target.value)}
+                    className="w-full appearance-none bg-white/[0.06] border border-white/[0.1] rounded-xl px-4 py-2.5 text-sm text-white pr-8 focus:outline-none focus:border-teal-500/50"
+                  >
+                    <option value="">— Sélectionner un examen actif —</option>
+                    {exams.map(e => (
+                      <option key={e._id} value={e._id}>
+                        {e.title} · {e.subject} · Gr.{e.classLevel}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => setShowSessionModal(false)}
+                    className="flex-1 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs text-slate-400 hover:text-white transition-colors"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={() => activateSession.mutate(selectedExamId)}
+                    disabled={!selectedExamId || activateSession.isPending}
+                    className="flex-1 py-2 rounded-xl bg-teal-500/20 border border-teal-500/30 text-xs text-teal-300 font-bold hover:bg-teal-500/30 transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+                  >
+                    {activateSession.isPending
+                      ? <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                      : <Play className="w-3.5 h-3.5" />}
+                    Activer la réception
+                  </button>
+                </div>
+
+                {activateSession.isError && (
+                  <p className="text-[10px] text-red-400 text-center">
+                    {(activateSession.error as any)?.response?.data?.message || 'Erreur activation'}
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Stats ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Total reçus',    value: total,      icon: Inbox,         color: 'text-sky-400',     bg: 'bg-sky-500/10' },
-          { label: 'En attente',     value: queued,     icon: Clock,         color: 'text-violet-400',  bg: 'bg-violet-500/10' },
-          { label: 'Dispatchés',     value: dispatched, icon: Send,          color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-          { label: 'Batches ouverts',value: openBatches,icon: Layers,        color: 'text-amber-400',   bg: 'bg-amber-500/10' },
+          { label: 'Total reçus',     value: total,       icon: Inbox,  color: 'text-sky-400',     bg: 'bg-sky-500/10' },
+          { label: 'En attente',      value: queued,      icon: Clock,  color: 'text-violet-400',  bg: 'bg-violet-500/10' },
+          { label: 'Dispatchés',      value: dispatched,  icon: Send,   color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+          { label: 'Batches ouverts', value: openBatches, icon: Layers, color: 'text-amber-400',   bg: 'bg-amber-500/10' },
         ].map((s, i) => (
           <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
             className="glass-card p-4">
@@ -473,7 +551,7 @@ export default function WhatsappPage() {
         ))}
       </div>
 
-      {/* ── Tabs ──────────────────────────────────────────────────────────── */}
+      {/* ── Tabs ────────────────────────────────────────────────────────── */}
       <div className="flex gap-1 p-1 bg-white/[0.03] rounded-xl border border-white/[0.06] w-fit">
         {([
           { key: 'inbox',   label: 'Inbox',   icon: Inbox,  badge: subs.filter(s => !s.examId).length },
@@ -494,12 +572,10 @@ export default function WhatsappPage() {
         ))}
       </div>
 
-      {/* ── Tab: Inbox ────────────────────────────────────────────────────── */}
+      {/* ── Tab: Inbox ──────────────────────────────────────────────────── */}
       <AnimatePresence mode="wait">
         {tab === 'inbox' && (
           <motion.div key="inbox" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
-
-            {/* Filtres */}
             <div className="flex gap-1.5 flex-wrap">
               {filters.map(f => (
                 <button key={f.key} onClick={() => setFilter(f.key)}
@@ -516,7 +592,6 @@ export default function WhatsappPage() {
               ))}
             </div>
 
-            {/* Aide contextuelle */}
             {filter === 'all' && subs.some(s => !s.examId) && (
               <div className="flex items-start gap-3 p-3 rounded-xl bg-sky-500/5 border border-sky-500/15">
                 <div className="w-6 h-6 rounded-lg bg-sky-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -530,12 +605,9 @@ export default function WhatsappPage() {
               </div>
             )}
 
-            {/* Liste */}
             {subsLoading ? (
               <div className="space-y-3">
-                {[...Array(3)].map((_, i) => (
-                  <div key={i} className="glass-card p-4 animate-pulse h-24" />
-                ))}
+                {[...Array(3)].map((_, i) => <div key={i} className="glass-card p-4 animate-pulse h-24" />)}
               </div>
             ) : subs.length === 0 ? (
               <div className="glass-card p-10 text-center">
@@ -554,10 +626,9 @@ export default function WhatsappPage() {
           </motion.div>
         )}
 
-        {/* ── Tab: Batches ───────────────────────────────────────────────── */}
+        {/* ── Tab: Batches ────────────────────────────────────────────── */}
         {tab === 'batches' && (
           <motion.div key="batches" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
-
             {openBatches > 0 && (
               <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-500/5 border border-amber-500/15">
                 <Clock className="w-4 h-4 text-amber-400 flex-shrink-0" />
@@ -566,7 +637,6 @@ export default function WhatsappPage() {
                 </p>
               </div>
             )}
-
             {batchLoading ? (
               <div className="space-y-3">
                 {[...Array(3)].map((_, i) => <div key={i} className="glass-card p-4 animate-pulse h-20" />)}
