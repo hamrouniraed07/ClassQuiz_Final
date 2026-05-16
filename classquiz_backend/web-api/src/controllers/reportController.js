@@ -258,7 +258,7 @@ async function buildPDF(studentExam) {
       .fontSize(28)
       .font('Helvetica-Bold')
       .text(
-        `${studentExam.totalScore} / ${studentExam.maxPossibleScore}  (${studentExam.percentage}%)  — Grade: ${studentExam.grade}`,
+        `${studentExam.totalScore} / ${studentExam.maxPossibleScore}  (${studentExam.percentage}%)`,
         { align: 'center' }
       );
 
