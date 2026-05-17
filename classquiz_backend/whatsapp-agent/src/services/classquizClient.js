@@ -24,19 +24,13 @@ async function resolveStudent(code) {
   logger.info(`[ClassQuiz] Recherche étudiant: ${code}`)
   try {
     const { data } = await api.get('/api/students', {
-      params: { search: code, limit: 200 },
+      params: { code: code.toUpperCase(), limit: 1 },  // ← filtre exact
     })
-
     const students = data?.data?.students || []
-    const match = students.find(s => s.code.toUpperCase() === code.toUpperCase())
-
-    if (match) {
-      logger.info(`[ClassQuiz] ✓ Étudiant trouvé: ${match.name} (${match._id})`)
-    } else {
-      logger.warn(`[ClassQuiz] ✗ Aucun étudiant avec code: ${code}`)
-    }
-
-    return match || null
+    const match = students[0] || null
+    if (match) logger.info(`[ClassQuiz] ✓ Étudiant trouvé: ${match.name}`)
+    else logger.warn(`[ClassQuiz] ✗ Introuvable: ${code}`)
+    return match
   } catch (err) {
     logger.error(`[ClassQuiz] resolveStudent error: ${err.message}`)
     throw err

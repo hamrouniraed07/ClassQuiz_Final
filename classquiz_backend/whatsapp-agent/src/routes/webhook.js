@@ -88,29 +88,56 @@ function handleWAHA(body) {
   if (!payload) return
   if (payload.fromMe) return
 
-  // WAHA envoie hasMedia=true pour les images
-  if (!payload.hasMedia) {
-    logger.debug(`[Webhook-WAHA] Message ignoré (pas de media)`)
-    return
+  // ── Extraire le vrai numéro de téléphone ─────────────────────────────────
+  // WEBJS retourne parfois @lid (identifiant interne Meta) au lieu de @c.us
+  // Priorité : payload.from @c.us → _data.from @c.us → _data.author @c.us → fallback
+  let senderPhone = null
+  if (payload.from?.includes('@c.us')) {
+    senderPhone = payload.from.split('@')[0]
+  } else if (payload._data?.from?.includes('@c.us')) {
+    senderPhone = payload._data.from.split('@')[0]
+  } else if (payload._data?.author?.includes('@c.us')) {
+    senderPhone = payload._data.author.split('@')[0]
+  } else {
+    // LID ou format inconnu → utiliser tel quel (sans le @...)
+    senderPhone = payload.from?.split('@')[0] || payload.from
   }
 
-  // format @lid ou @c.us → extraire juste le numéro
-  const senderPhone = payload.from?.split('@')[0] || payload.from
+  // ── Extraire le vrai nom de l'expéditeur ─────────────────────────────────
+  // notifyName = nom de profil WhatsApp de l'expéditeur (pas votre contact)
+  // Ne jamais utiliser body.me?.pushName qui est VOTRE propre nom
+  const senderName = payload._data?.notifyName || null
 
-  const messageData = {
-    messageId:   payload.id,
-    senderPhone: senderPhone,
-    senderName:  payload._data?.notifyName || body.me?.pushName || null,
-    mediaId:     payload.id,
-    // URL directe WAHA — contient déjà l'image téléchargée
-    mediaUrl:    payload.media?.url,
-    mimeType:    payload.media?.mimetype || 'image/jpeg',
-    caption:     payload.body || null,   // ← caption est dans body pas media
+  // ── Gérer image et texte ──────────────────────────────────────────────────
+  if (payload.hasMedia) {
+    const messageData = {
+      messageId:  payload.id,
+      senderPhone,
+      senderName,
+      mediaId:    payload.id,
+      mediaUrl:   payload.media?.url || null,
+      mimeType:   payload.media?.mimetype || 'image/jpeg',
+      caption:    payload.body || null,
+    }
+    logger.info(`[Webhook-WAHA] 📸 Image | from: ${senderPhone} (${senderName || 'inconnu'}) | caption: "${messageData.caption || '(vide)'}"`)
+    pipeline.handleIncomingPhoto(messageData).catch(err =>
+      logger.error(`[Webhook-WAHA] Erreur pipeline photo: ${err.message}`)
+    )
+
+  } else if (payload.type === 'chat' && payload.body) {
+    // Message texte pur → peut être un code étudiant envoyé séparément
+    logger.info(`[Webhook-WAHA] 📝 Texte | from: ${senderPhone} (${senderName || 'inconnu'}) | text: "${payload.body}"`)
+    pipeline.handleIncomingText({
+      messageId: payload.id,
+      senderPhone,
+      senderName,
+      text: payload.body,
+    }).catch(err =>
+      logger.error(`[Webhook-WAHA] Erreur pipeline texte: ${err.message}`)
+    )
+
+  } else {
+    logger.debug(`[Webhook-WAHA] Message ignoré (type: ${payload.type}, hasMedia: ${payload.hasMedia})`)
   }
-
-  logger.info(`[Webhook-WAHA] 📸 Image | from: ${senderPhone} | caption: "${messageData.caption || '(vide)'}"`)
-  pipeline.handleIncomingPhoto(messageData).catch(err =>
-    logger.error(`[Webhook-WAHA] Erreur pipeline: ${err.message}`)
-  )
 }
 module.exports = router

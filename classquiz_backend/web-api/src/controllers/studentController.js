@@ -13,21 +13,29 @@ const createStudent = async (req, res) => {
 };
 
 const getStudents = async (req, res) => {
-  const { classLevel, search, page = 1, limit = 20, active, sortBy = 'name', sortOrder = 'asc' } = req.query;
-  const filter = {};
-  if (classLevel) filter.classLevel = classLevel;
-  if (active === 'false') filter.isActive = false;
+  const { classLevel, search, code, page = 1, limit = 20, active, sortBy = 'name', sortOrder = 'asc' } = req.query
+
+  const filter = {}
+  if (classLevel) filter.classLevel = classLevel
+  if (active === 'false') filter.isActive = false
   else if (active === 'all') { /* no filter */ }
-  else filter.isActive = true;
-  if (search) filter.$text = { $search: search };
-  const skip = (parseInt(page) - 1) * parseInt(limit);
-  const sortDir = sortOrder === 'desc' ? -1 : 1;
+  else filter.isActive = true
+
+  // ← NOUVEAU : filtre par code exact (prioritaire sur search)
+  if (code) {
+    filter.code = code.toUpperCase()
+  } else if (search) {
+    filter.$text = { $search: search }
+  }
+
+  const skip = (parseInt(page) - 1) * parseInt(limit)
+  const sortDir = sortOrder === 'desc' ? -1 : 1
   const [students, total] = await Promise.all([
     Student.find(filter).sort({ [sortBy]: sortDir }).skip(skip).limit(parseInt(limit)),
     Student.countDocuments(filter),
-  ]);
-  return success(res, { students, pagination: { total, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(total / parseInt(limit)) } });
-};
+  ])
+  return success(res, { students, pagination: { total, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(total / parseInt(limit)) } })
+}
 
 
 
