@@ -88,27 +88,32 @@ function handleWAHA(body) {
   if (!payload) return
   if (payload.fromMe) return
 
-  // ── Extraire le vrai numéro de téléphone ─────────────────────────────────
-  // WEBJS retourne parfois @lid (identifiant interne Meta) au lieu de @c.us
-  // Priorité : payload.from @c.us → _data.from @c.us → _data.author @c.us → fallback
+  // ── DEBUG temporaire — voir tous les champs nom disponibles 
+  logger.info(`[WAHA-DEBUG] from: ${payload.from} | notifyName: ${payload._data?.notifyName} | pushName: ${body.me?.pushName}`)
+
+  // ── Extraire le vrai numéro de téléphone 
   let senderPhone = null
-  if (payload.from?.includes('@c.us')) {
-    senderPhone = payload.from.split('@')[0]
-  } else if (payload._data?.from?.includes('@c.us')) {
-    senderPhone = payload._data.from.split('@')[0]
-  } else if (payload._data?.author?.includes('@c.us')) {
-    senderPhone = payload._data.author.split('@')[0]
-  } else {
-    // LID ou format inconnu → utiliser tel quel (sans le @...)
-    senderPhone = payload.from?.split('@')[0] || payload.from
-  }
+if (payload.from?.includes('@c.us')) {
+  senderPhone = payload.from.split('@')[0]
+} else if (payload._data?.key?.remoteJidAlt?.includes('@s.whatsapp.net')) {
+  senderPhone = payload._data.key.remoteJidAlt.split('@')[0]
+} else if (payload._data?.key?.remoteJidAlt?.includes('@c.us')) {
+  senderPhone = payload._data.key.remoteJidAlt.split('@')[0]
+} else {
+  senderPhone = payload.from?.split('@')[0] || payload.from
+}
 
-  // ── Extraire le vrai nom de l'expéditeur ─────────────────────────────────
-  // notifyName = nom de profil WhatsApp de l'expéditeur (pas votre contact)
-  // Ne jamais utiliser body.me?.pushName qui est VOTRE propre nom
-  const senderName = payload._data?.notifyName || null
+  // ── Extraire le vrai nom de l'expéditeur 
+  // Chercher dans plusieurs champs dans l'ordre de fiabilité
+  // NE PAS utiliser body.me?.pushName → c'est VOTRE propre nom
+  const senderName =
+  payload._data?.pushName ||       
+  payload._data?.notifyName ||     
+  null
 
-  // ── Gérer image et texte ──────────────────────────────────────────────────
+  logger.info(`[WAHA-DEBUG] senderName résolu: "${senderName}" | senderPhone: "${senderPhone}"`)
+
+  // ── Gérer image et texte 
   if (payload.hasMedia) {
     const messageData = {
       messageId:  payload.id,
@@ -125,7 +130,6 @@ function handleWAHA(body) {
     )
 
   } else if (payload.type === 'chat' && payload.body) {
-    // Message texte pur → peut être un code étudiant envoyé séparément
     logger.info(`[Webhook-WAHA] 📝 Texte | from: ${senderPhone} (${senderName || 'inconnu'}) | text: "${payload.body}"`)
     pipeline.handleIncomingText({
       messageId: payload.id,
