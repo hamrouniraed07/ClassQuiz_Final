@@ -22,6 +22,16 @@ function handleWAHA(body) {
   if (!payload) return
   if (payload.fromMe) return
 
+  // DEBUG COMPLET
+  logger.info(`[Webhook-DEBUG] event: ${body.event}`)
+  logger.info(`[Webhook-DEBUG] type: "${payload.type}"`)
+  logger.info(`[Webhook-DEBUG] hasMedia: ${payload.hasMedia}`)
+  logger.info(`[Webhook-DEBUG] body: "${payload.body}"`)
+  logger.info(`[Webhook-DEBUG] text: "${payload.text}"`)
+  logger.info(`[Webhook-DEBUG] from: "${payload.from}"`)
+  logger.info(`[Webhook-DEBUG] payload keys: ${Object.keys(payload).join(', ')}`)
+
+
   // Extraire le numéro de téléphone
   let senderPhone = null
   if (payload.from?.includes('@c.us')) {
@@ -53,25 +63,26 @@ function handleWAHA(body) {
       mimeType:   payload.media?.mimetype || 'image/jpeg',
       caption:    payload.body || null,
     }
-    logger.info(`[Webhook-WAHA] 📸 Image | from: ${senderPhone} (${senderName || 'inconnu'}) | caption: "${messageData.caption || '(vide)'}"`)
+    logger.info(`[Webhook-WAHA]  Image | from: ${senderPhone} (${senderName || 'inconnu'}) | caption: "${messageData.caption || '(vide)'}"`)
     pipeline.handleIncomingPhoto(messageData).catch(err =>
       logger.error(`[Webhook-WAHA] Erreur pipeline photo: ${err.message}`)
     )
 
-  // Texte
-  } else if (payload.type === 'chat' && payload.body) {
-    logger.info(`[Webhook-WAHA] 📝 Texte | from: ${senderPhone} (${senderName || 'inconnu'}) | text: "${payload.body}"`)
+  // Texte 
+  } else if (!payload.hasMedia && (payload.body || payload.text)) {
+    const text = payload.body || payload.text
+    logger.info(`[Webhook-WAHA]  Texte | from: ${senderPhone} (${senderName || 'inconnu'}) | text: "${text}"`)
     pipeline.handleIncomingText({
       messageId: payload.id,
       senderPhone,
       senderName,
-      text: payload.body,
+      text,
     }).catch(err =>
       logger.error(`[Webhook-WAHA] Erreur pipeline texte: ${err.message}`)
     )
 
   } else {
-    logger.debug(`[Webhook-WAHA] Message ignoré (type: ${payload.type}, hasMedia: ${payload.hasMedia})`)
+    logger.warn(`[Webhook-WAHA] Message ignoré | type: "${payload.type}" | hasMedia: ${payload.hasMedia} | body: "${payload.body}" | text: "${payload.text}"`)
   }
 }
 
