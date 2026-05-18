@@ -1,8 +1,10 @@
 /**
  * src/pages/whatsapp/WhatsappPage.tsx — REFONTE COMPLÈTE
+ * Fix: image preview modal uses ReactDOM.createPortal to escape stacking contexts
  */
 
 import { useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Image, Send, Clock, AlertTriangle, Inbox, Layers,
@@ -95,11 +97,12 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string; do
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// COMPOSANT — Aperçu image
+// COMPOSANT — Aperçu image (Portal-based pour éviter les problèmes de z-index)
 // ══════════════════════════════════════════════════════════════════════════════
 function SubmissionImage({ sub }: { sub: Submission }) {
   const [open, setOpen] = useState(false)
   const src = `${AGENT_URL}/admin/submissions/${sub._id}/image?key=${AGENT_KEY}`
+
   if (!sub.localImagePath) {
     return (
       <div className="w-16 h-16 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center flex-shrink-0">
@@ -107,31 +110,122 @@ function SubmissionImage({ sub }: { sub: Submission }) {
       </div>
     )
   }
+
   return (
     <>
-      <button onClick={() => setOpen(true)} className="relative w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 group border border-white/[0.08] hover:border-teal-500/40 transition-all">
-        <img src={src} alt="copie" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display='none' }} />
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-all">
-          <Eye className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+      {/* Thumbnail cliquable */}
+      <button
+        onClick={() => setOpen(true)}
+        className="relative w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 group border border-white/[0.08] hover:border-teal-500/40 transition-all"
+      >
+        <img
+          src={src}
+          alt="copie"
+          className="w-full h-full object-cover"
+          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+        />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 flex items-center justify-center transition-all">
+          <Eye className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
         </div>
       </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={() => setOpen(false)}>
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
-              className="relative max-w-2xl max-h-[80vh] rounded-2xl overflow-hidden"
-              onClick={e => e.stopPropagation()}>
-              <img src={src} alt="copie" className="w-full h-full object-contain bg-slate-900" />
-              <button onClick={() => setOpen(false)}
-                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center hover:bg-black/80">
-                <X className="w-4 h-4 text-white" />
-              </button>
+
+      {/* Modal via Portal — échappe tout stacking context parent */}
+      {open && createPortal(
+        <AnimatePresence>
+          <motion.div
+            key="image-modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4"
+            style={{ zIndex: 9999 }}
+            onClick={() => setOpen(false)}
+          >
+            <motion.div
+              key="image-modal-card"
+              initial={{ scale: 0.88, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.88, opacity: 0, y: 20 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+              className="relative rounded-2xl overflow-hidden shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col"
+              style={{
+                background: 'rgba(15, 23, 42, 0.95)',
+                border: '1px solid rgba(255,255,255,0.1)',
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.08] flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-teal-500/20 flex items-center justify-center">
+                    <Eye className="w-3.5 h-3.5 text-teal-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">{sub.senderName || 'Inconnu'}</p>
+                    <p className="text-[10px] text-slate-500 font-mono">{fmtPhone(sub.senderPhone)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {sub.extractedCode && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono bg-white/[0.06] text-slate-300 border border-white/[0.08]">
+                      <Hash className="w-2.5 h-2.5" />{sub.extractedCode}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => setOpen(false)}
+                    className="w-7 h-7 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/[0.12] transition-all"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Image */}
+              <div className="flex-1 overflow-auto flex items-center justify-center p-2 min-h-0">
+                <img
+                  src={src}
+                  alt="copie examen"
+                  className="max-w-full max-h-full object-contain rounded-lg"
+                  style={{ maxHeight: 'calc(85vh - 100px)' }}
+                  onError={e => {
+                    const target = e.target as HTMLImageElement
+                    target.style.display = 'none'
+                    const parent = target.parentElement
+                    if (parent) {
+                      parent.innerHTML = `
+                        <div style="text-align:center;padding:2rem;color:#64748b">
+                          <p style="font-size:0.75rem">Image non disponible</p>
+                        </div>
+                      `
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Footer info */}
+              <div className="flex items-center gap-3 px-4 py-2.5 border-t border-white/[0.06] flex-shrink-0">
+                {(() => {
+                  const st = STATUS_META[sub.status] || STATUS_META.received
+                  return (
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${st.bg} ${st.color}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
+                      {st.label}
+                    </span>
+                  )
+                })()}
+                {sub.studentName && (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-teal-400">
+                    <User className="w-2.5 h-2.5" />{sub.studentName}
+                  </span>
+                )}
+                <span className="text-[10px] text-slate-600 ml-auto">{timeAgo(sub.createdAt)}</span>
+              </div>
             </motion.div>
           </motion.div>
-        )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        document.body
+      )}
     </>
   )
 }
@@ -396,10 +490,10 @@ export default function WhatsappPage() {
 
   const filters: { key: Filter; label: string; count?: number }[] = [
     { key: 'all',        label: 'Tous',         count: total },
-    { key: 'received',   label: '📥 Nouveaux' },
-    { key: 'queued',     label: '⏳ En attente', count: queued },
-    { key: 'dispatched', label: '✅ Dispatchés', count: dispatched },
-    { key: 'failed',     label: '❌ Échecs',     count: failed },
+    { key: 'received',   label: ' Nouveaux' },
+    { key: 'queued',     label: ' En attente', count: queued },
+    { key: 'dispatched', label: ' Dispatchés', count: dispatched },
+    { key: 'failed',     label: ' Échecs',     count: failed },
   ]
 
   return (
@@ -423,7 +517,7 @@ export default function WhatsappPage() {
             }`}
           >
             {session?.isActive ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-            {session?.isActive ? `Réception active · ${session.examTitle}` : 'Réception suspendue'}
+            {session?.isActive ? `Réception active` : 'Réception suspendue'}
             <ChevronDown className="w-3 h-3 ml-1" />
           </button>
 
@@ -434,15 +528,18 @@ export default function WhatsappPage() {
         </div>
       </div>
 
-      {/* ── Modal Session ───────────────────────────────────────────────── */}
-      <AnimatePresence>
-        {showSessionModal && (
+      {/* ── Modal Session (Portal) ──────────────────────────────────────── */}
+      {showSessionModal && createPortal(
+        <AnimatePresence>
           <motion.div
+            key="session-modal-backdrop"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            style={{ zIndex: 9999 }}
             onClick={() => setShowSessionModal(false)}
           >
             <motion.div
+              key="session-modal-card"
               initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               className="bg-slate-900 border border-white/[0.1] rounded-2xl p-6 w-full max-w-md shadow-2xl"
               onClick={e => e.stopPropagation()}
@@ -529,27 +626,11 @@ export default function WhatsappPage() {
               </div>
             </motion.div>
           </motion.div>
-        )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        document.body
+      )}
 
-      {/* ── Stats ───────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: 'Total reçus',     value: total,       icon: Inbox,  color: 'text-sky-400',     bg: 'bg-sky-500/10' },
-          { label: 'En attente',      value: queued,      icon: Clock,  color: 'text-violet-400',  bg: 'bg-violet-500/10' },
-          { label: 'Dispatchés',      value: dispatched,  icon: Send,   color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-          { label: 'Batches ouverts', value: openBatches, icon: Layers, color: 'text-amber-400',   bg: 'bg-amber-500/10' },
-        ].map((s, i) => (
-          <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-            className="glass-card p-4">
-            <div className={`w-8 h-8 rounded-lg ${s.bg} flex items-center justify-center mb-2`}>
-              <s.icon className={`w-4 h-4 ${s.color}`} />
-            </div>
-            <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-[10px] text-slate-500 mt-0.5">{s.label}</p>
-          </motion.div>
-        ))}
-      </div>
+     
 
       {/* ── Tabs ────────────────────────────────────────────────────────── */}
       <div className="flex gap-1 p-1 bg-white/[0.03] rounded-xl border border-white/[0.06] w-fit">

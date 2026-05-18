@@ -104,8 +104,6 @@ if (payload.from?.includes('@c.us')) {
 }
 
   // ── Extraire le vrai nom de l'expéditeur 
-  // Chercher dans plusieurs champs dans l'ordre de fiabilité
-  // NE PAS utiliser body.me?.pushName → c'est VOTRE propre nom
   const senderName =
   payload._data?.pushName ||       
   payload._data?.notifyName ||     
