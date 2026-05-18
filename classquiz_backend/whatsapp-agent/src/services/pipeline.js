@@ -1,15 +1,3 @@
-/**
- * src/services/pipeline.js
- *
- * WORKFLOW MANUEL :
- *   Message reçu → code extrait → étudiant résolu → image téléchargée
- *   → statut "student_found" → STOP (l'admin assigne depuis le dashboard)
- *
- *   L'admin choisit l'examen + batch depuis WhatsappPage
- *   → PATCH /admin/submissions/:id/assign → statut "queued"
- *   → Dispatch manuel depuis le dashboard → OCR + correction
- */
-
 const logger            = require('../utils/logger')
 const Submission        = require('../models/Submission')
 const Batch             = require('../models/Batch')
@@ -21,22 +9,18 @@ const classquiz         = require('./classquizClient')
 const BATCH_MAX_SIZE     = parseInt(process.env.BATCH_MAX_SIZE)         || 30
 const BATCH_MAX_WAIT_MIN = parseInt(process.env.BATCH_MAX_WAIT_MINUTES) || 15
 
-// ══════════════════════════════════════════════════════════════════
 // Session active
-// ══════════════════════════════════════════════════════════════════
 async function getActiveSession() {
   return ActiveExamSession.findOne({ isActive: true }).sort({ activatedAt: -1 })
 }
 
-// ══════════════════════════════════════════════════════════════════
 // PIPELINE PRINCIPAL
-// ══════════════════════════════════════════════════════════════════
 async function handleIncomingPhoto(msg) {
   const { messageId, senderPhone, senderName, mediaId, mimeType, caption } = msg
 
   logger.info(`[Pipeline] ▶ Nouveau message de ${senderPhone} | caption: "${caption || ''}"`)
 
-  // ── Créer l'enregistrement ────────────────────────────────────────────
+  // Créer l'enregistrement
   let sub
   try {
     sub = await Submission.create({
@@ -56,9 +40,7 @@ async function handleIncomingPhoto(msg) {
     throw err
   }
 
-  // ════════════════════════════════════════════════════════════════
   // ÉTAPE 1 — Vérifier qu'une session est active
-  // ════════════════════════════════════════════════════════════════
   const session = await getActiveSession()
 
   if (!session) {
@@ -75,9 +57,7 @@ async function handleIncomingPhoto(msg) {
   logger.info(`[Pipeline] Session active: "${session.examTitle}" (${session.examId})`)
   await ActiveExamSession.findByIdAndUpdate(session._id, { $inc: { receivedCount: 1 } })
 
-  // ════════════════════════════════════════════════════════════════
   // ÉTAPE 2 — Extraction du code depuis la légende
-  // ════════════════════════════════════════════════════════════════
   const { code } = parseCaption(caption)
 
   if (!code) {
@@ -101,9 +81,8 @@ async function handleIncomingPhoto(msg) {
   await sub.save()
   logger.info(`[Pipeline] ✓ Code extrait: ${code}`)
 
-  // ════════════════════════════════════════════════════════════════
+
   // ÉTAPE 3 — Résolution de l'étudiant
-  // ════════════════════════════════════════════════════════════════
   let student
   try {
     student = await classquiz.resolveStudent(code)
@@ -129,9 +108,7 @@ async function handleIncomingPhoto(msg) {
   await sub.save()
   logger.info(`[Pipeline] ✓ Étudiant résolu: ${student.name} (${student._id})`)
 
-  // ════════════════════════════════════════════════════════════════
   // ÉTAPE 4 — Téléchargement de l'image
-  // ════════════════════════════════════════════════════════════════
   let imageInfo
   try {
     imageInfo = await whatsapp.downloadMedia(mediaId, messageId, mimeType, msg.mediaUrl)
@@ -148,19 +125,12 @@ async function handleIncomingPhoto(msg) {
   await sub.save()
   logger.info(`[Pipeline] ✓ Image stockée: ${imageInfo.fileName}`)
 
-  // ════════════════════════════════════════════════════════════════
-  // FIN — Notifier l'admin (pas le parent, pas d'auto-enqueue)
-  // La soumission est maintenant visible dans le dashboard WhatsApp
-  // L'admin choisit l'examen et le batch manuellement
-  // ════════════════════════════════════════════════════════════════
   logger.info(
-    `[Pipeline] ✅ Copie de ${student.name} prête pour assignation manuelle | exam: "${session.examTitle}"`
+    `[Pipeline]  Copie de ${student.name} prête pour assignation manuelle | exam: "${session.examTitle}"`
   )
 }
 
-// ══════════════════════════════════════════════════════════════════
 // MISE EN QUEUE (appelée par PATCH /admin/submissions/:id/assign)
-// ══════════════════════════════════════════════════════════════════
 async function enqueue(sub) {
   let batch = await Batch.findOne({ examId: sub.examId, status: 'open' })
   if (!batch) {
@@ -173,9 +143,8 @@ async function enqueue(sub) {
   return batch
 }
 
-// ══════════════════════════════════════════════════════════════════
+
 // DISPATCH VERS CLASSQUIZ
-// ══════════════════════════════════════════════════════════════════
 async function dispatch(batchId, trigger = 'manual') {
   const batch = await Batch.findById(batchId)
   if (!batch || batch.status !== 'open') {
@@ -220,7 +189,7 @@ async function dispatch(batchId, trigger = 'manual') {
       { status: 'dispatched', studentExamId: result._id, dispatchedAt: new Date() }
     )
 
-    logger.info(`[Dispatch] ✅ ClassQuiz batch ID: ${result._id} → OCR + grading lancés`)
+    logger.info(`[Dispatch]  ClassQuiz batch ID: ${result._id} → OCR + grading lancés`)
     return result
 
   } catch (err) {
@@ -230,9 +199,8 @@ async function dispatch(batchId, trigger = 'manual') {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════
+
 // CRON — Batches expirés
-// ══════════════════════════════════════════════════════════════════
 async function checkExpiredBatches() {
   const cutoff  = new Date(Date.now() - BATCH_MAX_WAIT_MIN * 60 * 1000)
   const expired = await Batch.find({ status: 'open', createdAt: { $lte: cutoff } })

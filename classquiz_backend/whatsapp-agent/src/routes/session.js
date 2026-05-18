@@ -24,14 +24,13 @@ function auth(req, res, next) {
   next()
 }
 
-// ── GET /session ─────────────────────────────────────────────────────────────
+// GET /session 
 router.get('/', auth, async (req, res) => {
   const session = await ActiveExamSession.findOne().sort({ createdAt: -1 })
   res.json({ success: true, data: session })
 })
 
-// ── POST /session/activate ───────────────────────────────────────────────────
-// Body: { examId, examTitle, examSubject, classLevel }
+// POST /session/activate
 router.post('/activate', auth, async (req, res) => {
   const { examId, examTitle, examSubject, classLevel } = req.body
 
@@ -59,13 +58,10 @@ router.post('/activate', auth, async (req, res) => {
     }
   } catch (err) {
     logger.warn(`[Session] Impossible de vérifier l'examen: ${err.message}`)
-    // On continue quand même si l'API ClassQuiz est down
   }
 
-  // Désactiver toutes les sessions précédentes
   await ActiveExamSession.updateMany({}, { isActive: false })
 
-  // Créer la nouvelle session
   const session = await ActiveExamSession.create({
     examId,
     examTitle:   examTitle   || null,
@@ -78,11 +74,11 @@ router.post('/activate', auth, async (req, res) => {
     failedCount:   0,
   })
 
-  logger.info(`[Session] ✅ Examen activé: ${examTitle || examId}`)
+  logger.info(`[Session] Examen activé: ${examTitle || examId}`)
   res.json({ success: true, data: session })
 })
 
-// ── DELETE /session/deactivate ───────────────────────────────────────────────
+// DELETE /session/deactivate
 router.delete('/deactivate', auth, async (req, res) => {
   await ActiveExamSession.updateMany({ isActive: true }, { isActive: false })
   logger.info('[Session] ⏸ Session désactivée')

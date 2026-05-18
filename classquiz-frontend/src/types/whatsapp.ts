@@ -21,6 +21,14 @@ export interface Exam {
   createdAt: string
 }
 
+export type SubmissionStatus =
+  | 'received'
+  | 'code_extracted'
+  | 'student_found'
+  | 'queued'
+  | 'dispatched'
+  | 'failed'
+
 export interface Submission {
   _id: string
   whatsappMessageId: string
@@ -32,21 +40,59 @@ export interface Submission {
   studentName: string | null
   examId: string | null
   batchId: string | null
-  status: 'received' | 'code_extracted' | 'student_found' | 'queued' | 'dispatched' | 'failed'
+  status: SubmissionStatus
   failReason: string | null
   errorDetail: string | null
+  localImagePath: string | null
   createdAt: string
 }
+
+export type BatchStatus = 'open' | 'dispatching' | 'dispatched' | 'failed'
 
 export interface Batch {
   _id: string
   examId: string
   count: number
-  status: 'open' | 'dispatching' | 'dispatched' | 'failed'
+  status: BatchStatus
   classquizBatchId: string | null
   dispatchTrigger: string | null
   successCount: number
   failedCount: number
   dispatchedAt: string | null
   createdAt: string
+}
+
+//API response shapes 
+
+export interface Pagination {
+  total: number
+  page: number
+  limit: number
+}
+
+export interface SubmissionsResponse {
+  submissions: Submission[]
+  pagination: Pagination
+}
+
+export interface BatchesResponse {
+  batches: Batch[]
+  pagination: Pagination
+}
+
+export interface StatsResponse {
+  submissions: Array<{ _id: string; count: number }>
+  batches: Array<{ _id: string; count: number; total: number }>
+}
+
+// UI helpers 
+
+export type Tab    = 'inbox' | 'batches'
+export type Filter = 'all' | 'received' | 'queued' | 'dispatched' | 'failed'
+
+export interface StatusMeta {
+  label: string
+  color: string
+  bg: string
+  dot: string
 }

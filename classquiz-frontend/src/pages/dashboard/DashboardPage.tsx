@@ -13,7 +13,7 @@ import { useDashboard, useStudentExams, useValidations, useDownloadReport, usePr
 import { StatusBadge } from '@/components/shared'
 import { formatDate } from '@/lib/utils'
 
-// ── Static chart data ─────────────────────────────────────────────────────────
+// Static chart data
 const gradeData = [
   { grade: '1ère', avg: 68, count: 24 },
   { grade: '2ème', avg: 74, count: 31 },
@@ -40,7 +40,7 @@ const pieData = [
   { name: 'Incomplet',    value:  4, color: '#8b5cf6' },
 ]
 
-// ── Tooltip ───────────────────────────────────────────────────────────────────
+//Tooltip
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null
   return (
@@ -61,7 +61,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   )
 }
 
-// ── Mini stat card ─────────────────────────────────────────────────────────────
+// Mini stat card
 function KpiCard({
   label, value, sub, icon: Icon, color, delay
 }: {
@@ -120,7 +120,7 @@ function KpiCard({
   )
 }
 
-// ── Section wrapper ────────────────────────────────────────────────────────────
+//Section wrapper
 function Panel({ title, children, action, delay = 0 }: {
   title: string; children: React.ReactNode; action?: React.ReactNode; delay?: number
 }) {
@@ -146,9 +146,7 @@ function Panel({ title, children, action, delay = 0 }: {
   )
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
 // MAIN PAGE
-// ══════════════════════════════════════════════════════════════════════════════
 export default function DashboardPage() {
   const { data: stats, isLoading } = useDashboard()
   const { data: recentExams }      = useStudentExams({ page: 1, limit: 5 })
@@ -189,7 +187,7 @@ export default function DashboardPage() {
         }
       `}</style>
 
-      {/* ── Page header ── */}
+      {/* Page header */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -221,7 +219,7 @@ export default function DashboardPage() {
         </div>
       </motion.div>
 
-      {/* ── KPI Row ── */}
+      {/* KPI Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 22 }}>
         <KpiCard label="Étudiants inscrits" value={stats?.totalStudents ?? 0}    sub="Toutes classes confondues" icon={Users}         color="teal"   delay={0} />
         <KpiCard label="Examens traités"    value={stats?.totalExams ?? 0}        sub="Ce semestre"               icon={BookOpen}      color="violet" delay={0.05} />
@@ -229,7 +227,7 @@ export default function DashboardPage() {
         <KpiCard label="Score moyen"        value={`${avg}%`}                     sub={`Taux de réussite : ${pass}%`} icon={Award}    color="amber"  delay={0.15} />
       </div>
 
-      {/* ── Score + Progress summary ── */}
+      {/* Score + Progress summary */}
       <motion.div
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
@@ -304,7 +302,7 @@ export default function DashboardPage() {
 
 
 
-      {/* ── Area chart ── */}
+      {/* Area chart */}
       <div style={{ marginBottom: 22 }}>
         <Panel title="Copies traitées cette semaine" delay={0.28}>
           <ResponsiveContainer width="100%" height={120}>
@@ -326,7 +324,7 @@ export default function DashboardPage() {
         </Panel>
       </div>
 
-      {/* ── Bottom row ── */}
+      {/* Bottom row */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
 
         {/* Recent exams table */}

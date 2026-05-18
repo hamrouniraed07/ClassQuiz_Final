@@ -19,7 +19,7 @@ const pipeline = require('./services/pipeline')
 const app  = express()
 const PORT = process.env.PORT || 4000
 
-// ── CORS ──────────────────────────────────────────────────────────────────────
+// CORS
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost,http://localhost:80').split(',')
 
 app.use(cors({
@@ -33,16 +33,16 @@ app.use(cors({
   credentials: true,
 }))
 
-// ── Middleware ────────────────────────────────────────────────────────────────
+// Middleware
 app.use(helmet({ crossOriginResourcePolicy: false }))
 app.use(express.json({ limit: '2mb' }))
 app.use(morgan('combined', { stream: { write: m => logger.info(m.trim()) } }))
 
-// ── Dossiers ──────────────────────────────────────────────────────────────────
+// Dossiers
 fs.mkdirSync(path.join(process.cwd(), 'uploads', 'incoming'), { recursive: true })
 fs.mkdirSync(path.join(process.cwd(), 'logs'),               { recursive: true })
 
-// ── Routes ────────────────────────────────────────────────────────────────────
+// Routes 
 app.use('/webhook', require('./routes/webhook'))
 app.use('/admin',   require('./routes/admin'))
 app.use('/session', require('./routes/session'))
@@ -71,13 +71,13 @@ app.get('/health', async (req, res) => {
   })
 })
 
-// ── Erreurs globales ──────────────────────────────────────────────────────────
+// Erreurs globales 
 app.use((err, req, res, next) => {
   logger.error(`Unhandled error: ${err.message}`, err)
   res.status(500).json({ success: false, message: 'Internal server error' })
 })
 
-// ── Démarrage ─────────────────────────────────────────────────────────────────
+// Démarrage 
 async function start() {
   await mongoose.connect(process.env.MONGODB_URI || 'mongodb://mongo:27017/classquiz', {
     serverSelectionTimeoutMS: 10000,

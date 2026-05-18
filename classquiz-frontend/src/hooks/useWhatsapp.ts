@@ -1,16 +1,27 @@
 import axios from 'axios'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, useQuery, useMutation } from '@tanstack/react-query'
 import api from '@/lib/api'
-import type { ActiveSession, Exam, Submission, Batch } from '@/types/whatsapp'
+import type {
+  ActiveSession,
+  Exam,
+  Submission,
+  SubmissionsResponse,
+  BatchesResponse,
+  StatsResponse,
+} from '@/types/whatsapp'
 
-const AGENT_URL = import.meta.env.VITE_WHATSAPP_AGENT_URL || 'http://localhost:4000'
-const AGENT_KEY = import.meta.env.VITE_WHATSAPP_AGENT_KEY || 'change_this_secret_key'
+// Agent axios instance 
 
-const agentApi = axios.create({
+export const AGENT_URL = import.meta.env.VITE_WHATSAPP_AGENT_URL || 'http://localhost:4000'
+export const AGENT_KEY = import.meta.env.VITE_WHATSAPP_AGENT_KEY || 'change_this_secret_key'
+
+export const agentApi = axios.create({
   baseURL: AGENT_URL,
   headers: { 'x-agent-key': AGENT_KEY },
   timeout: 8000,
 })
+
+// Session
 
 export function useActiveSession() {
   return useQuery({
@@ -23,17 +34,7 @@ export function useActiveSession() {
   })
 }
 
-export function useActiveExams() {
-  return useQuery({
-    queryKey: ['exams-active'],
-    queryFn: async (): Promise<Exam[]> => {
-      const { data } = await api.get('/exams?status=active&limit=50')
-      return data.data?.exams || []
-    },
-  })
-}
-
-export function useActivateSession() {
+export function useActivateSession(onSuccess?: () => void) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (exam: Exam) => {
@@ -45,55 +46,93 @@ export function useActivateSession() {
       })
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['wa-session'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['wa-session'] })
+      onSuccess?.()
+    },
   })
 }
 
-export function useDeactivateSession() {
+export function useDeactivateSession(onSuccess?: () => void) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
       const { data } = await agentApi.delete('/session/deactivate')
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['wa-session'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['wa-session'] })
+      onSuccess?.()
+    },
   })
 }
 
-export function useWaStats() {
+//Exams
+
+export function useActiveExams() {
   return useQuery({
-    queryKey: ['wa-stats'],
-    queryFn: async () => {
-      const { data } = await agentApi.get('/admin/stats')
-      return data.data as { submissions: any[]; batches: any[] }
+    queryKey: ['exams-active'],
+    queryFn: async (): Promise<Exam[]> => {
+      const { data } = await api.get('/exams?status=active&limit=50')
+      return data.data?.exams ?? []
     },
-    refetchInterval: 8000,
   })
 }
+
+//Submissions
 
 export function useWaSubmissions(params?: { status?: string; page?: number }) {
   return useQuery({
     queryKey: ['wa-submissions', params],
-    queryFn: async () => {
-      const { data } = await agentApi.get('/admin/submissions', { params: { ...params, limit: 20 } })
-      return data.data as { submissions: Submission[]; pagination: any }
+    queryFn: async (): Promise<SubmissionsResponse> => {
+      const { data } = await agentApi.get('/admin/submissions', {
+        params: { ...params, limit: 50 },
+      })
+      return data.data
     },
     refetchInterval: 6000,
   })
 }
 
+export interface AssignPayload {
+  submissionId: string
+  examId: string
+  examTitle: string
+  batchId?: string
+}
+
+export function useAssignSubmission() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ submissionId, examId, examTitle, batchId }: AssignPayload) => {
+      const { data } = await agentApi.patch(`/admin/submissions/${submissionId}/assign`, {
+        examId,
+        examTitle,
+        ...(batchId ? { batchId } : {}),
+      })
+      return data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['wa-submissions'] })
+      qc.invalidateQueries({ queryKey: ['wa-batches'] })
+    },
+  })
+}
+
+// Batches
+
 export function useWaBatches() {
   return useQuery({
     queryKey: ['wa-batches'],
-    queryFn: async () => {
-      const { data } = await agentApi.get('/admin/batches', { params: { limit: 20 } })
-      return data.data as { batches: Batch[]; pagination: any }
+    queryFn: async (): Promise<BatchesResponse> => {
+      const { data } = await agentApi.get('/admin/batches', { params: { limit: 30 } })
+      return data.data
     },
     refetchInterval: 8000,
   })
 }
 
-export function useDispatch() {
+export function useDispatchBatch() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (batchId: string) => {
@@ -105,5 +144,18 @@ export function useDispatch() {
       qc.invalidateQueries({ queryKey: ['wa-stats'] })
       qc.invalidateQueries({ queryKey: ['wa-submissions'] })
     },
+  })
+}
+
+//Stats
+
+export function useWaStats() {
+  return useQuery({
+    queryKey: ['wa-stats'],
+    queryFn: async (): Promise<StatsResponse> => {
+      const { data } = await agentApi.get('/admin/stats')
+      return data.data
+    },
+    refetchInterval: 8000,
   })
 }

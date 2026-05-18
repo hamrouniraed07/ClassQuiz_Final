@@ -1,31 +1,22 @@
-/**
- * src/services/whatsappClient.js
- * 
- * Switch automatique META ↔ WAHA selon WA_PROVIDER dans .env
- * Aucun autre fichier à toucher pour changer de provider.
- */
 const axios  = require('axios')
 const fs     = require('fs')
 const path   = require('path')
 const { v4: uuidv4 } = require('uuid')
 const logger = require('../utils/logger')
 
-const PROVIDER   = process.env.WA_PROVIDER || 'meta'   // 'meta' ou 'waha'
+const PROVIDER   = process.env.WA_PROVIDER || 'meta'  
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'incoming')
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true })
 
 logger.info(`[WA] Provider actif: ${PROVIDER.toUpperCase()}`)
 
-// ══════════════════════════════════════════════════════
+
 // CONFIG META
-// ══════════════════════════════════════════════════════
 const META_BASE  = `https://graph.facebook.com/${process.env.WHATSAPP_API_VERSION || 'v18.0'}`
 const META_TOKEN = () => process.env.WHATSAPP_ACCESS_TOKEN
 const META_PHONE = () => process.env.WHATSAPP_PHONE_NUMBER_ID
 
-// ══════════════════════════════════════════════════════
 // CONFIG WAHA
-// ══════════════════════════════════════════════════════
 const WAHA_BASE    = process.env.WAHA_URL     || 'http://localhost:3000'
 const WAHA_KEY     = () => process.env.WAHA_API_KEY
 const WAHA_SESSION = process.env.WAHA_SESSION || 'classquiz'
@@ -41,17 +32,16 @@ const EXT_MAP = {
   'image/png': 'png',  'image/webp': 'webp'
 }
 
-// ══════════════════════════════════════════════════════
+
 // DOWNLOAD MEDIA
-// ══════════════════════════════════════════════════════
 async function downloadMedia(mediaId, messageId, mimeType = 'image/jpeg', mediaUrl = null) {
 
-  // ── MODE TEST ───────────────────────────────────────
+  // MODE TEST
   if (mediaId?.startsWith('FAKE') || mediaId?.startsWith('LOCAL')) {
     // ... code test existant inchangé ...
   }
 
-  // ── WAHA — téléchargement via URL directe ──────────
+  // ── WAHA — téléchargement via URL directe 
   if (PROVIDER === 'waha') {
     const ext      = EXT_MAP[mimeType] || 'jpg'
     const fileName = `${messageId}_${uuidv4()}.${ext}`
@@ -77,13 +67,9 @@ const response = await axios.get(url, {
     return { filePath, fileName, mimeType }
   }
 
-  // ── META ────────────────────────────────────────────
-  // ... code Meta existant inchangé ...
 }
 
-// ══════════════════════════════════════════════════════
 // SEND MESSAGE
-// ══════════════════════════════════════════════════════
 async function sendMessage(to, text) {
   try {
     if (PROVIDER === 'waha') {
@@ -117,7 +103,7 @@ async function sendMessage(to, text) {
 
 async function sendSuccessWithExam(to, studentName, examTitle) {
   await sendMessage(to,
-    `✅ *ClassQuiz — Copie reçue*\n\n` +
+    ` *ClassQuiz — Copie reçue*\n\n` +
     `La copie de *${studentName}* a bien été reçue et indexée.\n` +
     `Examen : *${examTitle || 'En cours'}*\n\n` +
     `Elle sera traitée automatiquement (OCR + correction). 📝`
@@ -127,23 +113,23 @@ async function sendSuccessWithExam(to, studentName, examTitle) {
 async function sendError(to, reason) {
   const msgs = {
     no_code:
-      `⚠️ *ClassQuiz — Code manquant*\n\n` +
+      `*ClassQuiz — Code manquant*\n\n` +
       `Aucun code étudiant n'a été trouvé dans votre message.\n\n` +
-      `📸 *Comment envoyer correctement :*\n` +
+      `*Comment envoyer correctement :*\n` +
       `1. Sélectionner la photo de la copie\n` +
       `2. *Avant d'envoyer*, appuyer sur "Ajouter une légende"\n` +
       `3. Taper le code de l'étudiant (ex: *STU-2026-045*)\n` +
       `4. Envoyer`,
     invalid_code:
-      `⚠️ *ClassQuiz — Code invalide*\n\n` +
+      ` *ClassQuiz — Code invalide*\n\n` +
       `Le code envoyé ne correspond pas au format attendu.\n` +
       `Merci de vérifier le code sur la copie et réessayer.`,
     student_unknown:
-      `⚠️ *ClassQuiz — Étudiant introuvable*\n\n` +
+      ` *ClassQuiz — Étudiant introuvable*\n\n` +
       `Le code envoyé ne correspond à aucun étudiant enregistré.\n` +
       `Veuillez vérifier le code sur la copie.`,
     download_failed:
-      `⚠️ *ClassQuiz — Erreur technique*\n\n` +
+      `*ClassQuiz — Erreur technique*\n\n` +
       `Impossible de récupérer la photo. Merci de renvoyer votre message.`,
     no_active_session:
       `⏸ *ClassQuiz — Réception suspendue*\n\n` +

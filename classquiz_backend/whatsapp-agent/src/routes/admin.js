@@ -1,7 +1,3 @@
-/**
- * src/routes/admin.js
- * API de monitoring et dispatch manuel
- */
 const express  = require('express')
 const router   = express.Router()
 const logger   = require('../utils/logger')
@@ -20,7 +16,7 @@ function auth(req, res, next) {
   next()
 }
 
-// ── Stats globales ────────────────────────────────────────────────────────────
+// Stats globales
 router.get('/stats', auth, async (req, res) => {
   const [subStats, batchStats] = await Promise.all([
     Submission.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
@@ -29,7 +25,7 @@ router.get('/stats', auth, async (req, res) => {
   res.json({ success: true, data: { submissions: subStats, batches: batchStats } })
 })
 
-// ── Liste des batches ─────────────────────────────────────────────────────────
+// Liste des batches
 router.get('/batches', auth, async (req, res) => {
   const { status, page = 1, limit = 20 } = req.query
   const filter = {}
@@ -42,14 +38,14 @@ router.get('/batches', auth, async (req, res) => {
   res.json({ success: true, data: { batches, pagination: { total, page: +page, limit: +limit } } })
 })
 
-// ── Détail d'un batch ─────────────────────────────────────────────────────────
+// Détail d'un batch
 router.get('/batches/:id', auth, async (req, res) => {
   const batch = await Batch.findById(req.params.id).populate('submissionIds')
   if (!batch) return res.status(404).json({ success: false, message: 'Not found' })
   res.json({ success: true, data: batch })
 })
 
-// ── Dispatch manuel ───────────────────────────────────────────────────────────
+// Dispatch manuel
 router.post('/batches/:id/dispatch', auth, async (req, res) => {
   try {
     const result = await pipeline.dispatch(req.params.id, 'manual')
@@ -60,7 +56,7 @@ router.post('/batches/:id/dispatch', auth, async (req, res) => {
   }
 })
 
-// ── Liste des soumissions ─────────────────────────────────────────────────────
+// Liste des soumissions 
 router.get('/submissions', auth, async (req, res) => {
   const { status, page = 1, limit = 20 } = req.query
   const filter = {}
@@ -73,7 +69,7 @@ router.get('/submissions', auth, async (req, res) => {
   res.json({ success: true, data: { submissions, pagination: { total, page: +page, limit: +limit } } })
 })
 
-// ── Servir l'image d'une soumission ──────────────────────────────────────────
+// Servir l'image d'une soumission 
 // GET /admin/submissions/:id/image
 router.get('/submissions/:id/image', auth, async (req, res) => {
   const sub = await Submission.findById(req.params.id)
@@ -92,10 +88,7 @@ router.get('/submissions/:id/image', auth, async (req, res) => {
   fs.createReadStream(sub.localImagePath).pipe(res)
 })
 
-// ── Assigner une soumission à un examen + batch ───────────────────────────────
-// PATCH /admin/submissions/:id/assign
-// Body: { examId, examTitle, batchId? }
-//   → batchId absent = chercher un batch ouvert existant ou en créer un nouveau
+// Assigner une soumission à un examen + batch
 router.patch('/submissions/:id/assign', auth, async (req, res) => {
   const { examId, examTitle, batchId } = req.body
 
@@ -142,10 +135,8 @@ router.patch('/submissions/:id/assign', auth, async (req, res) => {
   targetBatch.count += 1
   await targetBatch.save()
 
-  // Mettre à jour la soumission
   sub.examId  = examId
   sub.batchId = targetBatch._id
-  // Si l'étudiant est déjà résolu → queued, sinon on garde student_found
   sub.status  = sub.studentId ? 'queued' : 'student_found'
   await sub.save()
 

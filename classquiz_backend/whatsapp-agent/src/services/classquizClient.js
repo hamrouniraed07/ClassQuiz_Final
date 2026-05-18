@@ -1,9 +1,3 @@
-/**
- * src/services/classquizClient.js — VERSION MISE À JOUR
- *
- * Fix : copie les images vers uploads/student-exams/ avant dispatch
- * pour qu'elles soient accessibles par web-api via le volume partagé.
- */
 const axios    = require('axios')
 const fs       = require('fs')
 const path     = require('path')
@@ -43,7 +37,7 @@ async function dispatchBatch(examId, items) {
 
   form.append('examId', examId)
 
-  // ── Dossier de destination partagé avec web-api ───────────────────────────
+  // ── Dossier de destination partagé avec web-api 
   // uploads/ est monté comme volume partagé entre whatsapp-agent et web-api
   // web-api lit depuis uploads/student-exams/
   const sharedDir = path.join(process.cwd(), 'uploads', 'student-exams')
@@ -55,7 +49,7 @@ async function dispatchBatch(examId, items) {
       continue
     }
 
-    // ── Copier vers le dossier partagé ──────────────────────────────────────
+    // ── Copier vers le dossier partagé 
     const ext      = path.extname(item.filePath) || '.jpg'
     const fileName = `wa_${Date.now()}_${path.basename(item.filePath)}`
     const destPath = path.join(sharedDir, fileName)

@@ -1,8 +1,3 @@
-/**
- * src/routes/webhook.js
- * 
- * Switch automatique META ↔ WAHA selon WA_PROVIDER dans .env
- */
 const express  = require('express')
 const router   = express.Router()
 const logger   = require('../utils/logger')
@@ -10,9 +5,7 @@ const pipeline = require('../services/pipeline')
 
 const PROVIDER = process.env.WA_PROVIDER || 'meta'
 
-// ══════════════════════════════════════════════════════
 // META — GET /webhook (vérification d'abonnement)
-// ══════════════════════════════════════════════════════
 router.get('/', (req, res) => {
   if (PROVIDER !== 'meta') return res.sendStatus(200)
 
@@ -28,9 +21,7 @@ router.get('/', (req, res) => {
   return res.sendStatus(403)
 })
 
-// ══════════════════════════════════════════════════════
 // POST /webhook — Messages entrants (META + WAHA)
-// ══════════════════════════════════════════════════════
 router.post('/', (req, res) => {
   res.sendStatus(200)
   
@@ -50,7 +41,7 @@ router.post('/', (req, res) => {
   }
 })
 
-// ── Parser META ───────────────────────────────────────
+//  Parser META
 function handleMeta(body) {
   if (body?.object !== 'whatsapp_business_account') return
 
@@ -80,7 +71,7 @@ function handleMeta(body) {
   )
 }
 
-// ── Parser WAHA ───────────────────────────────────────
+// Parser WAHA
 function handleWAHA(body) {
   if (body?.event !== 'message') return
 
