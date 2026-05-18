@@ -4,20 +4,11 @@ const path   = require('path')
 const { v4: uuidv4 } = require('uuid')
 const logger = require('../utils/logger')
 
-const PROVIDER   = process.env.WA_PROVIDER || 'meta'  
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'incoming')
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true })
 
-logger.info(`[WA] Provider actif: ${PROVIDER.toUpperCase()}`)
-
-
-// CONFIG META
-const META_BASE  = `https://graph.facebook.com/${process.env.WHATSAPP_API_VERSION || 'v18.0'}`
-const META_TOKEN = () => process.env.WHATSAPP_ACCESS_TOKEN
-const META_PHONE = () => process.env.WHATSAPP_PHONE_NUMBER_ID
-
 // CONFIG WAHA
-const WAHA_BASE    = process.env.WAHA_URL     || 'http://localhost:3000'
+const WAHA_BASE    = process.env.WAHA_URL     || 'http://waha:3000'
 const WAHA_KEY     = () => process.env.WAHA_API_KEY
 const WAHA_SESSION = process.env.WAHA_SESSION || 'classquiz'
 
@@ -29,8 +20,10 @@ const wahaApi = axios.create({
 
 const EXT_MAP = {
   'image/jpeg': 'jpg', 'image/jpg': 'jpg',
-  'image/png': 'png',  'image/webp': 'webp'
+  'image/png':  'png', 'image/webp': 'webp',
 }
+
+logger.info(`[WA] Provider: WAHA — session: ${WAHA_SESSION}`)
 
 
 // DOWNLOAD MEDIA
@@ -38,72 +31,54 @@ async function downloadMedia(mediaId, messageId, mimeType = 'image/jpeg', mediaU
 
   // MODE TEST
   if (mediaId?.startsWith('FAKE') || mediaId?.startsWith('LOCAL')) {
-    // ... code test existant inchangé ...
+    const testPath = path.join(UPLOAD_DIR, 'test_image.jpg')
+    return { filePath: testPath, fileName: 'test_image.jpg', mimeType }
   }
 
-  // ── WAHA — téléchargement via URL directe 
-  if (PROVIDER === 'waha') {
-    const ext      = EXT_MAP[mimeType] || 'jpg'
-    const fileName = `${messageId}_${uuidv4()}.${ext}`
-    const filePath = path.join(UPLOAD_DIR, fileName)
+  const ext      = EXT_MAP[mimeType] || 'jpg'
+  const fileName = `${messageId}_${uuidv4()}.${ext}`
+  const filePath = path.join(UPLOAD_DIR, fileName)
 
-    // L'URL WAHA est interne Docker → remplacer localhost:3000 par waha:3000
-    const url = (mediaUrl || '').replace('http://localhost:3000', 'http://waha:3000')
+  // L'URL WAHA interne Docker : remplacer localhost:3000 par waha:3000
+  const url = (mediaUrl || '').replace('http://localhost:3000', 'http://waha:3000')
 
-const response = await axios.get(url, {
-  responseType: 'stream',
-  headers: { 'X-Api-Key': WAHA_KEY() },
-  timeout: 30000,
-})
+  const response = await axios.get(url, {
+    responseType: 'stream',
+    headers: { 'X-Api-Key': WAHA_KEY() },
+    timeout: 30000,
+  })
 
-    await new Promise((resolve, reject) => {
-      const writer = fs.createWriteStream(filePath)
-      response.data.pipe(writer)
-      writer.on('finish', resolve)
-      writer.on('error', reject)
-    })
+  await new Promise((resolve, reject) => {
+    const writer = fs.createWriteStream(filePath)
+    response.data.pipe(writer)
+    writer.on('finish', resolve)
+    writer.on('error', reject)
+  })
 
-    logger.info(`[WA-WAHA] ✓ Image téléchargée: ${fileName}`)
-    return { filePath, fileName, mimeType }
-  }
-
+  logger.info(`[WA-WAHA] ✓ Image téléchargée: ${fileName}`)
+  return { filePath, fileName, mimeType }
 }
+
 
 // SEND MESSAGE
 async function sendMessage(to, text) {
   try {
-    if (PROVIDER === 'waha') {
-      // WAHA — POST /api/sendText
-      await wahaApi.post('/api/sendText', {
-        session: WAHA_SESSION,
-        chatId:  `${to}@c.us`,   // format WAHA
-        text,
-      })
-      logger.info(`[WA-WAHA] ✓ Message envoyé → ${to}`)
-    } else {
-      // META
-      await axios.post(`${META_BASE}/${META_PHONE()}/messages`, {
-        messaging_product: 'whatsapp',
-        recipient_type:    'individual',
-        to,
-        type: 'text',
-        text: { body: text },
-      }, {
-        headers: {
-          Authorization:  `Bearer ${META_TOKEN()}`,
-          'Content-Type': 'application/json',
-        }
-      })
-      logger.info(`[WA-META] ✓ Message envoyé → ${to}`)
-    }
+    await wahaApi.post('/api/sendText', {
+      session: WAHA_SESSION,
+      chatId:  `${to}@c.us`,
+      text,
+    })
+    logger.info(`[WA-WAHA] ✓ Message envoyé → ${to}`)
   } catch (err) {
-    logger.warn(`[WA] Envoi message échoué → ${to}: ${err.message}`)
+    logger.warn(`[WA-WAHA] Envoi message échoué → ${to}: ${err.message}`)
   }
 }
 
+
+// MESSAGES PRÉDÉFINIS
 async function sendSuccessWithExam(to, studentName, examTitle) {
   await sendMessage(to,
-    ` *ClassQuiz — Copie reçue*\n\n` +
+    `*ClassQuiz — Copie reçue*\n\n` +
     `La copie de *${studentName}* a bien été reçue et indexée.\n` +
     `Examen : *${examTitle || 'En cours'}*\n\n` +
     `Elle sera traitée automatiquement (OCR + correction). 📝`
@@ -113,7 +88,7 @@ async function sendSuccessWithExam(to, studentName, examTitle) {
 async function sendError(to, reason) {
   const msgs = {
     no_code:
-      `*ClassQuiz — Code manquant*\n\n` +
+      ` *ClassQuiz — Code manquant*\n\n` +
       `Aucun code étudiant n'a été trouvé dans votre message.\n\n` +
       `*Comment envoyer correctement :*\n` +
       `1. Sélectionner la photo de la copie\n` +
@@ -129,7 +104,7 @@ async function sendError(to, reason) {
       `Le code envoyé ne correspond à aucun étudiant enregistré.\n` +
       `Veuillez vérifier le code sur la copie.`,
     download_failed:
-      `*ClassQuiz — Erreur technique*\n\n` +
+      ` *ClassQuiz — Erreur technique*\n\n` +
       `Impossible de récupérer la photo. Merci de renvoyer votre message.`,
     no_active_session:
       `⏸ *ClassQuiz — Réception suspendue*\n\n` +

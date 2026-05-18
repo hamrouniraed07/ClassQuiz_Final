@@ -84,7 +84,7 @@ async function dispatchBatch(examId, items) {
     maxBodyLength:    Infinity,
   })
 
-  logger.info(`[ClassQuiz] ✅ Batch accepté: ${data.data._id} (${mappings.length} copies)`)
+  logger.info(`[ClassQuiz] Batch accepté: ${data.data._id} (${mappings.length} copies)`)
   return data.data
 }
 
