@@ -23,7 +23,7 @@ async function getActiveSession() {
 
 // handleIncomingText
 async function handleIncomingText({ messageId, senderPhone, senderName, text }) {
-  logger.info(`[Pipeline] 📝 Texte reçu de ${senderPhone}: "${text}"`)
+  logger.info(`[Pipeline] Texte reçu de ${senderPhone}: "${text}"`)
 
   const session = await getActiveSession()
   if (!session) {
@@ -64,7 +64,7 @@ async function handleIncomingText({ messageId, senderPhone, senderName, text }) 
       },
       { upsert: true, new: true }
     )
-    logger.info(`[Pipeline] ⏳ Code ${code} enregistré, en attente des photos (${senderPhone})`)
+    logger.info(`[Pipeline] Code ${code} enregistré, en attente des photos (${senderPhone})`)
     await whatsapp.sendMessage(senderPhone,
       `*ClassQuiz — Code reçu ✓*\n\n` +
       `Code étudiant : *${code}*\n\n` +
@@ -165,7 +165,7 @@ async function handleIncomingPhoto(msg) {
   )
 
   const photoCount = pending.photos.length
-  logger.info(`[Pipeline] 📸 Photo ${photoCount} accumulée pour ${senderPhone} (code: ${pending.code || 'en attente'})`)
+  logger.info(`[Pipeline]  Photo ${photoCount} accumulée pour ${senderPhone} (code: ${pending.code || 'en attente'})`)
 
   if (pending.code) {
     // Code déjà connu — (re)démarrer le timer
@@ -180,7 +180,7 @@ async function handleIncomingPhoto(msg) {
 
     const timer = setTimeout(async () => {
       photoTimers.delete(senderPhone)
-      logger.info(`[Pipeline] ⏰ Timer expiré → traitement pour ${senderPhone}`)
+      logger.info(`[Pipeline]  Timer expiré → traitement pour ${senderPhone}`)
       const freshSession = await getActiveSession()
       if (freshSession) await triggerProcessing(senderPhone, freshSession)
     }, PHOTO_WAIT_MS)
@@ -216,7 +216,7 @@ async function triggerProcessing(senderPhone, session) {
   const { code, photos, senderName } = pending
   const firstPhoto = photos[0]
 
-  logger.info(`[Pipeline] 🚀 Traitement: ${photos.length} photo(s), code ${code}, phone ${senderPhone}`)
+  logger.info(`[Pipeline] Traitement: ${photos.length} photo(s), code ${code}, phone ${senderPhone}`)
 
   // Supprimer le pending AVANT de créer la Submission (évite doublons si appelé 2x)
   await PendingPair.deleteOne({ senderPhone })
@@ -328,7 +328,7 @@ async function _processWithCode(sub, code, session, msg) {
   await sub.save()
 
   const pageInfo = allPhotos.length > 1 ? ` (${allPhotos.length} pages fusionnées)` : ''
-  logger.info(`[Pipeline] ✅ Copie de ${student.name} prête${pageInfo} | exam: "${session.examTitle}"`)
+  logger.info(`[Pipeline]  Copie de ${student.name} prête${pageInfo} | exam: "${session.examTitle}"`)
 }
 
 
@@ -357,7 +357,7 @@ async function mergeImages(filePaths) {
     logger.info(`[Pipeline] 🖼 ${filePaths.length} images fusionnées → ${path.basename(outputPath)}`)
     return outputPath
   } catch (err) {
-    logger.warn(`[Pipeline] ⚠️ Fusion impossible (${err.message}) — 1ère image utilisée`)
+    logger.warn(`[Pipeline]  Fusion impossible (${err.message}) — 1ère image utilisée`)
     return filePaths[0]
   }
 }

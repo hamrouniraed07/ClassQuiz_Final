@@ -13,15 +13,7 @@ import { useDashboard, useStudentExams, useValidations, useDownloadReport, usePr
 import { StatusBadge } from '@/components/shared'
 import { formatDate } from '@/lib/utils'
 
-// Static chart data
-const gradeData = [
-  { grade: '1ère', avg: 68, count: 24 },
-  { grade: '2ème', avg: 74, count: 31 },
-  { grade: '3ème', avg: 71, count: 28 },
-  { grade: '4ème', avg: 79, count: 22 },
-  { grade: '5ème', avg: 65, count: 19 },
-  { grade: '6ème', avg: 82, count: 26 },
-]
+
 
 const weekData = [
   { day: 'Lun', copies: 12 },
@@ -32,13 +24,6 @@ const weekData = [
   { day: 'Sam', copies: 5 },
 ]
 
-const pieData = [
-  { name: 'Correct',      value: 52, color: '#10b981' },
-  { name: 'Partiel',      value: 22, color: '#f59e0b' },
-  { name: 'Conceptuel',   value: 14, color: '#ef4444' },
-  { name: 'Calcul',       value:  8, color: '#f97316' },
-  { name: 'Incomplet',    value:  4, color: '#8b5cf6' },
-]
 
 //Tooltip
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -185,7 +170,7 @@ export default function DashboardPage() {
           background: linear-gradient(90deg, #0ea5e9, #14b8a6);
           transition: width 1s ease;
         }
-      `}</style>
+      `}</style>CustomTooltip
 
       {/* Page header */}
       <motion.div
@@ -226,80 +211,6 @@ export default function DashboardPage() {
         <KpiCard label="En attente"         value={stats?.pendingValidations ?? 0} sub="Validation manuelle OCR"  icon={AlertTriangle} color="red"    delay={0.1} />
         <KpiCard label="Score moyen"        value={`${avg}%`}                     sub={`Taux de réussite : ${pass}%`} icon={Award}    color="amber"  delay={0.15} />
       </div>
-
-      {/* Score + Progress summary */}
-      <motion.div
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.18 }}
-        style={{
-          background: 'linear-gradient(135deg, rgba(14,165,233,0.08) 0%, rgba(20,184,166,0.06) 100%)',
-          border: '1px solid rgba(20,184,166,0.15)',
-          borderRadius: 18,
-          padding: '18px 24px',
-          marginBottom: 22,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 40,
-        }}
-      >
-        <div style={{ flex: 1 }}>
-          <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
-            Score moyen global
-          </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 10 }}>
-            <span style={{ fontSize: 36, fontWeight: 800, color: '#14b8a6', fontFamily: "'DM Mono', monospace" }}>
-              {avg}<span style={{ fontSize: 18, color: '#475569' }}>%</span>
-            </span>
-            <div style={{ flex: 1 }}>
-              <div className="prog-bar">
-                <div className="prog-fill" style={{ width: `${avg}%` }} />
-              </div>
-            </div>
-          </div>
-          <p style={{ fontSize: 11, color: '#475569' }}>
-            Basé sur {stats?.totalExams ?? 0} examens corrigés automatiquement par l'IA
-          </p>
-        </div>
-
-        <div style={{ width: 1, height: 60, background: 'rgba(255,255,255,0.06)' }} />
-
-        <div style={{ flex: 1 }}>
-          <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
-            Taux de réussite
-          </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 10 }}>
-            <span style={{ fontSize: 36, fontWeight: 800, color: '#f59e0b', fontFamily: "'DM Mono', monospace" }}>
-              {pass}<span style={{ fontSize: 18, color: '#475569' }}>%</span>
-            </span>
-            <div style={{ flex: 1 }}>
-              <div className="prog-bar">
-                <div style={{
-                  height: '100%', borderRadius: 99,
-                  background: 'linear-gradient(90deg, #f59e0b, #f97316)',
-                  width: `${pass}%`, transition: 'width 1s ease',
-                }} />
-              </div>
-            </div>
-          </div>
-          <p style={{ fontSize: 11, color: '#475569' }}>
-            Note de passage fixée à 50%
-          </p>
-        </div>
-
-        <div style={{ width: 1, height: 60, background: 'rgba(255,255,255,0.06)' }} />
-
-        <div style={{ textAlign: 'center', minWidth: 100 }}>
-          <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
-            Validations OCR
-          </p>
-          <p style={{ fontSize: 36, fontWeight: 800, color: '#ef4444', fontFamily: "'DM Mono', monospace" }}>
-            {stats?.pendingValidations ?? 0}
-          </p>
-          <p style={{ fontSize: 10, color: '#475569' }}>réponses à vérifier</p>
-        </div>
-      </motion.div>
-
 
 
       {/* Area chart */}
