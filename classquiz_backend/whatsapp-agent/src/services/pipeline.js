@@ -324,6 +324,7 @@ async function _processWithCode(sub, code, session, msg) {
     : downloadedPaths[0]
 
   sub.localImagePath = finalImagePath
+  sub.allImagePaths = downloadedPaths  // garder les chemins originaux pour navigation
   sub.status         = 'student_found'
   await sub.save()
 

@@ -25,6 +25,7 @@ const submissionSchema = new mongoose.Schema({
 
   // Batch
   batchId:           { type: mongoose.Schema.Types.ObjectId, ref: 'Batch', default: null },
+  allImagePaths: [{ type: String }],
 
   // Résultat ClassQuiz
   studentExamId:     { type: String, default: null },   // _id du StudentExam créé dans ClassQuiz

@@ -10,8 +10,6 @@ import type {
   StatsResponse,
 } from '@/types/whatsapp'
 
-// Agent axios instance 
-
 export const AGENT_URL = import.meta.env.VITE_WHATSAPP_AGENT_URL || 'http://localhost:4000'
 export const AGENT_KEY = import.meta.env.VITE_WHATSAPP_AGENT_KEY || 'change_this_secret_key'
 
@@ -22,7 +20,6 @@ export const agentApi = axios.create({
 })
 
 // Session
-
 export function useActiveSession() {
   return useQuery({
     queryKey: ['wa-session'],
@@ -67,8 +64,7 @@ export function useDeactivateSession(onSuccess?: () => void) {
   })
 }
 
-//Exams
-
+// Exams
 export function useActiveExams() {
   return useQuery({
     queryKey: ['exams-active'],
@@ -79,8 +75,7 @@ export function useActiveExams() {
   })
 }
 
-//Submissions
-
+// Submissions
 export function useWaSubmissions(params?: { status?: string; page?: number }) {
   return useQuery({
     queryKey: ['wa-submissions', params],
@@ -119,8 +114,22 @@ export function useAssignSubmission() {
   })
 }
 
-// Batches
+// DELETE submission
+export function useDeleteSubmission() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (submissionId: string) => {
+      const { data } = await agentApi.delete(`/admin/submissions/${submissionId}`)
+      return data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['wa-submissions'] })
+      qc.invalidateQueries({ queryKey: ['wa-stats'] })
+    },
+  })
+}
 
+// Batches
 export function useWaBatches() {
   return useQuery({
     queryKey: ['wa-batches'],
@@ -147,8 +156,7 @@ export function useDispatchBatch() {
   })
 }
 
-//Stats
-
+// Stats
 export function useWaStats() {
   return useQuery({
     queryKey: ['wa-stats'],

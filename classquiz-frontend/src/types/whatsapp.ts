@@ -44,6 +44,7 @@ export interface Submission {
   failReason: string | null
   errorDetail: string | null
   localImagePath: string | null
+  allImagePaths: string[] | null   // multi-pages support
   createdAt: string
 }
 
@@ -61,8 +62,6 @@ export interface Batch {
   dispatchedAt: string | null
   createdAt: string
 }
-
-//API response shapes 
 
 export interface Pagination {
   total: number
@@ -84,8 +83,6 @@ export interface StatsResponse {
   submissions: Array<{ _id: string; count: number }>
   batches: Array<{ _id: string; count: number; total: number }>
 }
-
-// UI helpers 
 
 export type Tab    = 'inbox' | 'batches'
 export type Filter = 'all' | 'received' | 'queued' | 'dispatched' | 'failed'
