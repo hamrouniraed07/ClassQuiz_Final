@@ -33,7 +33,7 @@ ClassQuiz is a microservices-based platform consisting of:
 │         ▼                  ▼                                              │
 │  ┌──────────────┐  ┌──────────────┐                                      │
 │  │  AI Service  │  │WhatsApp Agent│  Node.js + Express (Port 4000)       │
-│  │  (Port 8000) │  │              │  - Meta Webhook Receiver              │
+│  │  (Port 8000) │  │              │  - WAHA Webhook Receiver              │
 │  │              │  │              │  - WAHA Integration                   │
 │  │  Python +    │  │              │  - Session Management                 │
 │  │  FastAPI     │  │              │  - Admin Dashboard                   │
@@ -251,7 +251,7 @@ cp classquiz_backend/ai-service/.env.example classquiz_backend/ai-service/.env
 
 # Configure WhatsApp Agent
 cp classquiz_backend/whatsapp-agent/.env.example classquiz_backend/whatsapp-agent/.env
-# Edit: WHATSAPP_VERIFY_TOKEN, WHATSAPP_ACCESS_TOKEN
+# Edit: WAHA_URL, WAHA_API_KEY, CLASSQUIZ_API_TOKEN, AGENT_ADMIN_API_KEY
 ```
 
 ### 3. Start All Services
@@ -320,12 +320,15 @@ docker run -p 80:80 classquiz-frontend
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `WHATSAPP_VERIFY_TOKEN` | Webhook verification token | - | Yes |
-| `WHATSAPP_ACCESS_TOKEN` | Meta API access token | - | Yes |
-| `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp phone number ID | - | Yes |
+| `WA_PROVIDER` | WhatsApp provider (`waha`) | `waha` | No |
+| `WAHA_URL` | WAHA internal service URL (Docker network) | `http://waha:3000` | No |
+| `WAHA_API_KEY` | WAHA API key | `change_this_secret` | Yes |
+| `WAHA_SESSION` | WAHA session name | `default` | No |
+| `PHOTO_WAIT_SECONDS` | Wait window after last incoming photo | `20` | No |
 | `MONGODB_URI` | MongoDB connection string | `mongodb://mongo:27017/classquiz` | No |
 | `CLASSQUIZ_API_URL` | ClassQuiz API URL | `http://web-api:3000` | No |
-| `WAHA_URL` | WAHA service URL | `http://waha:3000` | No |
+| `CLASSQUIZ_API_TOKEN` | API token used by the agent | - | Yes |
+| `AGENT_ADMIN_API_KEY` | Admin key for protected agent routes | - | Yes |
 | `PORT` | Server port | `4000` | No |
 | `NODE_ENV` | Environment | `production` | No |
 
@@ -339,6 +342,8 @@ docker run -p 80:80 classquiz-frontend
 | `WAHA_DASHBOARD_PASSWORD` | Dashboard password | `classquiz2024` |
 | `WHATSAPP_RESTART_ALL_SESSIONS` | Auto-restart sessions | `true` |
 | `WHATSAPP_START_SESSION` | Default session name | `default` |
+
+Note: from your host machine, WAHA is exposed on `http://localhost:3001`, but inside Docker services the correct URL is `http://waha:3000`.
 
 ## 📚 API Documentation
 
@@ -380,8 +385,8 @@ Complete API documentation is available in `classquiz_backend/API_CONTRACTS.md`.
 - `GET /api/reports/exam/:examId` - Get exam statistics
 
 #### WhatsApp Agent
-- `POST /webhook` - Meta webhook endpoint
-- `GET /webhook` - Webhook verification
+- `POST /webhook` - WAHA event webhook endpoint
+- `GET /webhook` - Webhook health/verification endpoint
 - `GET /health` - Health check
 - `GET /admin/sessions` - List WhatsApp sessions
 - `POST /admin/sessions/:sessionId/restart` - Restart session
@@ -423,7 +428,7 @@ Complete API documentation is available in `classquiz_backend/API_CONTRACTS.md`.
 ```
 1. Parent sends exam photo + student code via WhatsApp
    ↓
-2. Meta webhook triggers WhatsApp Agent
+2. WAHA webhook triggers WhatsApp Agent
    ↓
 3. Agent validates student code
    ↓
